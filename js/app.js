@@ -118,52 +118,55 @@ LMS.App = () => {
     LMS.DB.init();
   }, []);
 
-  // Load data on mount
-  useEffect(() => {
-    const loadData = async () => {
-      const session = LMS.DB.localLoad('session');
-      if (session?.loggedIn) setIsLoggedIn(true);
+  // Load data helper
+  const refreshStateFromLocal = useCallback(() => {
+    const session = LMS.DB.localLoad('session');
+    if (session?.loggedIn) setIsLoggedIn(true);
 
-      if (!LMS.DB.localLoad('owner')) LMS.DB.localSave('owner', { ...LMS.DEFAULT_OWNER, libraryName: 'MAGADH LIBRARY' });
+    if (!LMS.DB.localLoad('owner')) LMS.DB.localSave('owner', { ...LMS.DEFAULT_OWNER, libraryName: 'MAGADH LIBRARY' });
 
-      // Load from local first (instant)
-      setStudents(LMS.DB.localLoad('students') || []);
-      setPayments(LMS.DB.localLoad('payments') || []);
+    // Load from local first (instant)
+    setStudents(LMS.DB.localLoad('students') || []);
+    setPayments(LMS.DB.localLoad('payments') || []);
 
-      const loadedHalls = LMS.DB.localLoad('halls');
-      setHalls(loadedHalls && loadedHalls.length > 0 ? loadedHalls : LMS.DEFAULT_HALLS);
+    const loadedHalls = LMS.DB.localLoad('halls');
+    setHalls(loadedHalls && loadedHalls.length > 0 ? loadedHalls : LMS.DEFAULT_HALLS);
 
-      setShifts(LMS.DB.localLoad('shifts') || LMS.DEFAULT_SHIFTS || []);
-      const savedSettings = LMS.DB.localLoad('settings');
-      let finalSettings = savedSettings ? { ...LMS.DEFAULT_SETTINGS, ...savedSettings } : { ...LMS.DEFAULT_SETTINGS, libraryName: 'MAGADH LIBRARY' };
+    setShifts(LMS.DB.localLoad('shifts') || LMS.DEFAULT_SHIFTS || []);
+    const savedSettings = LMS.DB.localLoad('settings');
+    let finalSettings = savedSettings ? { ...LMS.DEFAULT_SETTINGS, ...savedSettings } : { ...LMS.DEFAULT_SETTINGS, libraryName: 'Data Loading...' };
 
-      // Force update name if it matches old default
-      if (finalSettings.libraryName === 'My Study Library' || finalSettings.libraryName === 'My Study Library Management System') {
-        finalSettings.libraryName = 'MAGADH LIBRARY';
-      }
-      setSettings(finalSettings);
-      setActivityLog(LMS.DB.localLoad('activityLog') || []);
-      setPendingWork(LMS.DB.localLoad('pendingWork') || []);
-      setExpenses(LMS.DB.localLoad('expenses') || []);
+    // Force update name if it matches old default
+    if (finalSettings.libraryName === 'My Study Library' || finalSettings.libraryName === 'My Study Library Management System') {
+      finalSettings.libraryName = 'MAGADH LIBRARY';
+    }
+    setSettings(finalSettings);
+    setActivityLog(LMS.DB.localLoad('activityLog') || []);
+    setPendingWork(LMS.DB.localLoad('pendingWork') || []);
+    setExpenses(LMS.DB.localLoad('expenses') || []);
+    setDetails(LMS.DB.localLoad('details') || []); // Ensure this is loaded if used
 
-      // Auto-cleanup old photos (90+ days inactive)
-      const { cleaned, count } = LMS.cleanupStudentPhotos(students || []);
-      if (count > 0) {
-        setStudents(cleaned);
-        // We'll save this in the debounced effect, or we can force save here if needed.
-        // The debounced effect will pick up the state change.
-        // console.log(`Auto - cleaned ${ count } old student photos`);
-      }
-
-      // Attempt initial Cloud Sync
-      if (LMS.DB.isConfigured && session?.loggedIn) {
-        try { await LMS.DB.syncCloudToLocal(); } catch (e) { }
-      }
-
-      setLoading(false);
-    };
-    loadData();
+    setLoading(false);
   }, []);
+
+  // Initialize Firebase & Data
+  useEffect(() => {
+    LMS.DB.init();
+    refreshStateFromLocal();
+
+    const initialSync = async () => {
+      const session = LMS.DB.localLoad('session');
+      if (LMS.DB.isConfigured && session?.loggedIn) {
+        try {
+          await LMS.DB.syncCloudToLocal();
+          refreshStateFromLocal(); // Refresh UI immediately after sync
+        } catch (e) {
+          console.error("Initial sync failed", e);
+        }
+      }
+    };
+    initialSync();
+  }, [refreshStateFromLocal]);
 
   // REAL-TIME LISTENERS
   useEffect(() => {
@@ -205,36 +208,36 @@ LMS.App = () => {
     };
   }, [LMS.DB.userId]); // Re-run if user login changes
 
-  // Save data on change (debounced)
+  // Save data on change (Immediate Local, Debounced Cloud)
   const saveTimeout = useRef({});
   const debouncedSave = useCallback((key, data) => {
-    // If this update came from remote, do NOT send it back to cloud
-    // This prevents infinite loops
-    if (isRemoteUpdate.current[key]) { // CHECK SPECIFIC KEY
-      LMS.DB.localSave(key, data);
+    // 1. ALWAYS Save to LocalStorage IMMEDIATELY
+    // This ensures no data loss on refresh/close
+    LMS.DB.localSave(key, data);
 
-      // Reset flag after delay
+    // 2. Handle Remote Updates (Sync Loop Prevention)
+    if (isRemoteUpdate.current[key]) {
       setTimeout(() => {
         if (isRemoteUpdate.current) isRemoteUpdate.current[key] = false;
       }, 500);
-      return;
+      return; // Stop here, don't sync back to cloud
     }
 
+    // 3. Debounce Cloud Sync
     clearTimeout(saveTimeout.current[key]);
 
-    // 1000ms DEBOUNCE (Relaxed for local save)
-    saveTimeout.current[key] = setTimeout(() => {
-      LMS.DB.localSave(key, data);
+    // Only Sync Monolithic Keys automatically
+    // Granular keys (students, etc.) are synced via explicit saveItem actions if needed, 
+    // but here we just handle the monolithic ones that rely on full array overwrite.
+    const monolithicKeys = ['settings', 'owner', 'pendingWork'];
 
-      // Cloud Sync: ONLY for Monolithic Data (Settings, etc.)
-      // Granular data (students, payments) is saved explicitly via saveItem() 
-      // in their respective add/edit/delete functions.
-      const monolithicKeys = ['settings', 'owner', 'pendingWork'];
-
-      if (LMS.DB.isConfigured && LMS.DB.userId && monolithicKeys.includes(key)) {
-        LMS.DB.save(key, data);
-      }
-    }, 1000); // 1s delay is fine for background save
+    if (monolithicKeys.includes(key)) {
+      saveTimeout.current[key] = setTimeout(() => {
+        if (LMS.DB.isConfigured && LMS.DB.userId) {
+          LMS.DB.save(key, data);
+        }
+      }, 1000);
+    }
   }, []);
 
   useEffect(() => { debouncedSave('students', students); }, [students]);
@@ -256,6 +259,7 @@ LMS.App = () => {
 
   const handleLogin = () => {
     setIsLoggedIn(true);
+    refreshStateFromLocal(); // Ensure data is loaded fresh on login
     addLog('Owner logged in');
   };
 
