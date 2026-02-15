@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Library Management System</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#6366f1',
+            secondary: '#ec4899',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- HTM - JSX-like syntax without build step -->
+  <script src="https://unpkg.com/htm@3/dist/htm.js"></script>
+
+  <!-- Firebase (for cloud sync) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+
+<body class="gradient-bg">
+  <div id="root">
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+      <div style="text-align:center;">
+        <div
+          style="width:3rem;height:3rem;border:3px solid #334155;border-top-color:#0ea5e9;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 1rem;">
+        </div>
+        <p style="color:#94a3b8;">Loading Library Management System...</p>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    ╔══════════════════════════════════════════════════╗
+    ║  LIBRARY MANAGEMENT SYSTEM v3.0                 ║
+    ║  GitHub Pages Ready + Firebase Cloud Sync       ║
+    ║                                                  ║
+    ║  Files loaded in dependency order:               ║
+    ║  1. config.js    - Constants & defaults          ║
+    ║  2. firebase-db.js - Cloud database layer        ║
+    ║  3. utils.js     - Utilities & calculations      ║
+    ║  4. icons.js     - SVG icon components           ║
+    ║  5. components.js - Shared UI components         ║
+    ║  6. login.js     - Login page                    ║
+    ║  7. dashboard.js - Dashboard page                ║
+    ║  8. students.js  - Student management            ║
+    ║  9. seats.js     - Seat management               ║
+    ║  10. payments.js - Payment management            ║
+    ║  11. accounts.js - Accounts summary              ║
+    ║  12. alerts.js   - Smart alerts                  ║
+    ║  13. activity.js - Activity log                  ║
+    ║  14. settings.js - Settings & cloud sync         ║
+    ║  15. app.js      - Main app & router             ║
+    ╚══════════════════════════════════════════════════╝
+  -->
+
+  <!-- Global Initialization -->
+  <script>
+    // Make shared bindings available across all script files
+    var html = htm.bind(React.createElement);
+    var h = React.createElement;
+    var useState = React.useState;
+    var useEffect = React.useEffect;
+    var useCallback = React.useCallback;
+    var useRef = React.useRef;
+    var createContext = React.createContext;
+    var useContext = React.useContext;
+    var useMemo = React.useMemo;
+  </script>
+
+  <!-- Core -->
+  <script src="js/config.js"></script>
+  <script src="js/firebase-db.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/components.js"></script>
+
+  <!-- Pages -->
+  <script src="js/login.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/students.js"></script>
+  <script src="js/seats.js"></script>
+  <script src="js/payments.js"></script>
+  <script src="js/accounts.js"></script>
+  <script src="js/alerts.js"></script>
+  <script src="js/attendance.js"></script>
+  <script src="js/activity.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/chatbot.js"></script>
+  <script src="js/screensaver.js"></script>
+
+  <!-- Main App (must be last) -->
+  <script src="js/app.js"></script>
+</body>
+
+</html>
