@@ -101,14 +101,28 @@ LMS.App = () => {
   const [loading, setLoading] = useState(true);
 
   // Data states
-  const [students, setStudents] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [halls, setHalls] = useState([]);
-  const [shifts, setShifts] = useState([]);
-  const [settings, setSettings] = useState(LMS.DEFAULT_SETTINGS);
-  const [activityLog, setActivityLog] = useState([]);
-  const [pendingWork, setPendingWork] = useState([]);
-  const [expenses, setExpenses] = useState([]);
+  // Data states - Initialize from LocalStorage to prevent overwrite
+  const [students, setStudents] = useState(() => LMS.DB.localLoad('students') || []);
+  const [payments, setPayments] = useState(() => LMS.DB.localLoad('payments') || []);
+  const [halls, setHalls] = useState(() => {
+    const loaded = LMS.DB.localLoad('halls');
+    return loaded && loaded.length > 0 ? loaded : LMS.DEFAULT_HALLS;
+  });
+  const [shifts, setShifts] = useState(() => LMS.DB.localLoad('shifts') || LMS.DEFAULT_SHIFTS || []);
+
+  const [settings, setSettings] = useState(() => {
+    const saved = LMS.DB.localLoad('settings');
+    let final = saved ? { ...LMS.DEFAULT_SETTINGS, ...saved } : { ...LMS.DEFAULT_SETTINGS, libraryName: 'MAGADH LIBRARY' };
+    if (final.libraryName === 'My Study Library' || final.libraryName === 'My Study Library Management System') {
+      final.libraryName = 'MAGADH LIBRARY';
+    }
+    return final;
+  });
+
+  const [activityLog, setActivityLog] = useState(() => LMS.DB.localLoad('activityLog') || []);
+  const [pendingWork, setPendingWork] = useState(() => LMS.DB.localLoad('pendingWork') || []);
+  const [expenses, setExpenses] = useState(() => LMS.DB.localLoad('expenses') || []);
+  const [details, setDetails] = useState(() => LMS.DB.localLoad('details') || []);
 
   // Remote update flag to prevent loops (per key)
   const isRemoteUpdate = useRef({});
