@@ -1,5 +1,4 @@
-
-const CACHE_NAME = 'lms-v2';
+const CACHE_NAME = 'lms-v3';
 const urlsToCache = [
     './',
     './index.html',
@@ -75,3 +74,4 @@ self.addEventListener('activate', event => {
         })
     );
 });
+
