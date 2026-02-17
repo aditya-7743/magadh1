@@ -243,7 +243,7 @@ LMS.App = () => {
     // Only Sync Monolithic Keys automatically
     // Granular keys (students, etc.) are synced via explicit saveItem actions if needed, 
     // but here we just handle the monolithic ones that rely on full array overwrite.
-    const monolithicKeys = ['settings', 'owner', 'pendingWork'];
+    const monolithicKeys = ['settings', 'owner'];
 
     if (monolithicKeys.includes(key)) {
       saveTimeout.current[key] = setTimeout(() => {
@@ -259,12 +259,22 @@ LMS.App = () => {
   useEffect(() => { debouncedSave('halls', halls); }, [halls]);
   useEffect(() => { debouncedSave('shifts', shifts); }, [shifts]);
   useEffect(() => { debouncedSave('settings', settings); }, [settings]);
-  useEffect(() => { debouncedSave('activityLog', activityLog); }, [activityLog]);
-  useEffect(() => { debouncedSave('pendingWork', pendingWork); }, [pendingWork]);
-  useEffect(() => { debouncedSave('expenses', expenses); }, [expenses]);
+  // Granular sync managed individually for these:
+  // useEffect(() => { debouncedSave('activityLog', activityLog); }, [activityLog]);
+  // useEffect(() => { debouncedSave('pendingWork', pendingWork); }, [pendingWork]);
+  // useEffect(() => { debouncedSave('expenses', expenses); }, [expenses]);
 
   const addLog = useCallback((action) => {
-    setActivityLog(prev => [{ action, timestamp: new Date().toISOString() }, ...prev].slice(0, 100));
+    const newLog = {
+      id: LMS.generateId(), // Ensure ID for granular sync
+      action,
+      timestamp: new Date().toISOString()
+    };
+
+    setActivityLog(prev => [newLog, ...prev].slice(0, 100));
+
+    // Direct Granular Sync
+    if (LMS.DB.saveItem) LMS.DB.saveItem('activityLog_v2', newLog);
   }, []);
 
   const showToast = useCallback((message, type = 'info') => {
