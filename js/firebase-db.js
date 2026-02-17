@@ -347,20 +347,25 @@ LMS.DB = {
       if (owner) await this.db.ref(this.getPath('owner')).set(owner);
 
       // 2. Granular Data (Merge, don't overwrite entire list)
-      const granularKeys = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog'];
+      const granularKeys = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'];
 
       for (const key of granularKeys) {
         const localList = this.localLoad(key);
         if (Array.isArray(localList) && localList.length > 0) {
           const updates = {};
+          
+          // Determine if this key needs _v2 suffix (match logic in getPath)
+          const isV2 = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'].includes(key);
+          const targetKey = isV2 ? `${key}_v2` : key;
+
           localList.forEach(item => {
             if (item.id) {
-              updates[`${key}/${item.id}`] = item;
+              updates[`${targetKey}/${item.id}`] = item;
             }
           });
           // Perform a multi-path update
           if (Object.keys(updates).length > 0) {
-            await this.db.ref(this.getPath('')).update(updates);
+            await this.db.ref(this.getPath('').replace(/\/$/, '')).update(updates);
           }
         }
       }
