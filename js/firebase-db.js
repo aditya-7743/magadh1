@@ -182,7 +182,7 @@ LMS.DB = {
     }
 
     // Safety check: Prevent accidental overwrite of granular collections
-    const granularKeys = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog'];
+    const granularKeys = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'];
     if (granularKeys.includes(key)) {
       console.warn(`⚠️ BLOCKED: Attempted full overwrite of granular key '${key}'. Use saveItem() instead.`);
       return false;
@@ -353,7 +353,7 @@ LMS.DB = {
         const localList = this.localLoad(key);
         if (Array.isArray(localList) && localList.length > 0) {
           const updates = {};
-          
+
           // Determine if this key needs _v2 suffix (match logic in getPath)
           const isV2 = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'].includes(key);
           const targetKey = isV2 ? `${key}_v2` : key;
