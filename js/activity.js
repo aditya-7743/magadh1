@@ -22,29 +22,67 @@ LMS.ActivityLog = () => {
       completed: false
     };
     setPendingWork(prev => [work, ...prev]);
+
+    // Cloud Sync
+    if (LMS.DB.saveItem) LMS.DB.saveItem('pendingWork_v2', work);
+
     setNewWork('');
     showToast('Task added to pending list', 'success');
   };
 
   const toggleWork = (id) => {
-    setPendingWork(prev => prev.map(w => w.id === id ? { ...w, completed: !w.completed } : w));
+    let updatedWork = null;
+    setPendingWork(prev => prev.map(w => {
+      if (w.id === id) {
+        updatedWork = { ...w, completed: !w.completed };
+        return updatedWork;
+      }
+      return w;
+    }));
+
+    // Cloud Sync
+    if (updatedWork && LMS.DB.saveItem) LMS.DB.saveItem('pendingWork_v2', updatedWork);
   };
 
   const deleteWork = (id) => {
     if (confirm('Delete this task?')) {
       setPendingWork(prev => prev.filter(w => w.id !== id));
+      // Cloud Sync
+      if (LMS.DB.removeItem) LMS.DB.removeItem('pendingWork_v2', id);
     }
   };
 
   const clearCompleted = () => {
     // Basic clear of completed items
-    setPendingWork(prev => prev.filter(w => !w.completed));
+    const toRemove = [];
+    setPendingWork(prev => {
+      const kept = [];
+      prev.forEach(w => {
+        if (w.completed) toRemove.push(w.id);
+        else kept.push(w);
+      });
+      return kept;
+    });
+
+    // Cloud Sync
+    if (LMS.DB.removeItem) {
+      toRemove.forEach(id => LMS.DB.removeItem('pendingWork_v2', id));
+    }
     showToast('Completed tasks cleared', 'success');
   };
 
   const handleClearAll = () => {
     if (clearPass === '123') {
+      // Get all IDs to remove them from cloud
+      const allIds = pendingWork.map(w => w.id);
+
       setPendingWork([]);
+
+      // Cloud Sync
+      if (LMS.DB.removeItem) {
+        allIds.forEach(id => LMS.DB.removeItem('pendingWork_v2', id));
+      }
+
       setShowClearAuth(false);
       setClearPass('');
       showToast('All pending work cleared', 'success');
