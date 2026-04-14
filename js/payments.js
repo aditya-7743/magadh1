@@ -11,7 +11,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
   // Initialize form state
   const [form, setForm] = useState({
     studentId: student?.id || payment?.studentId || '',
-    amount: payment ? Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)) : (Number(student?.monthlyFee) || 500),
+    amount: payment ? Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)) : (Number(student?.monthlyFee) || 600),
     months: payment?.months || 1,
     discount: payment?.discount || 0,
     method: payment?.method || 'cash',
@@ -44,7 +44,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
   };
 
   const [isCustomAmount, setIsCustomAmount] = useState(!!payment);
-  const [customTotal, setCustomTotal] = useState(payment?.amount || (student?.monthlyFee || 500));
+  const [customTotal, setCustomTotal] = useState(payment?.amount || (student?.monthlyFee || 600));
 
   // If not custom, auto-calculate. If custom, use custom value.
   const calculatedTotal = isCustomAmount ? customTotal : (form.amount * form.months) - form.discount;
@@ -250,7 +250,21 @@ LMS.PaymentManagement = () => {
               <span class="text-xl font-bold text-emerald-400">${LMS.formatCurrency(payment.amount)}</span>
               ${payment.photo && html`<button class="btn btn-ghost btn-sm" onClick=${() => setViewImage(payment.photo)}><${Icons.Eye} /></button>`}
               ${student?.mobile && html`<button class="btn btn-ghost btn-sm text-green-400" onClick=${() => sendWhatsApp(student, LMS.getDueAmount(student, payments))}><${Icons.WhatsApp} /></button>`}
-              <${Button} size="sm" variant="ghost" onClick=${() => { setEditPayment(payment); setForm(payment); setSelectedStudent(payment.studentId); setShowForm(true); }}><${Icons.Edit} /></${Button}>
+              <${Button} size="sm" variant="ghost" onClick=${() => { 
+                setEditPayment(payment); 
+                setForm({
+                  studentId: payment.studentId,
+                  amount: Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)),
+                  months: payment.months || 1,
+                  discount: payment.discount || 0,
+                  method: payment.method || 'cash',
+                  note: payment.note || '',
+                  photo: payment.photo || '',
+                  date: payment.date || new Date().toISOString().split('T')[0],
+                }); 
+                setSelectedStudent(payment.studentId); 
+                setShowForm(true); 
+              }}><${Icons.Edit} /></${Button}>
               <${Button} size="sm" variant="ghost" className="text-red-400" onClick=${() => handleDelete(payment)}><${Icons.Delete} /></${Button}>
             </div>
           </div>
