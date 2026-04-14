@@ -313,7 +313,20 @@ LMS.DB = {
   async saveItem(collection, item) {
     if (!this.isConfigured || !this.userId || !item.id) return false;
     try {
-      await this.db.ref(this.getPath(`${collection}/${item.id}`)).set(item);
+      const parentRef = this.db.ref(this.getPath(collection));
+      const snapshot = await parentRef.orderByChild('id').equalTo(item.id).once('value');
+      const updates = {};
+      
+      if (snapshot.exists()) {
+        snapshot.forEach(child => {
+          if (child.key !== item.id) {
+            updates[child.key] = null; // Clean up legacy numerical keys
+          }
+        });
+      }
+      updates[item.id] = item; // Set the actual item
+      
+      await parentRef.update(updates);
       return true;
     } catch (e) {
       console.error(`Error saving item to ${collection}:`, e);
@@ -325,7 +338,19 @@ LMS.DB = {
   async removeItem(collection, itemId) {
     if (!this.isConfigured || !this.userId || !itemId) return false;
     try {
-      await this.db.ref(this.getPath(`${collection}/${itemId}`)).remove();
+      const parentRef = this.db.ref(this.getPath(collection));
+      const snapshot = await parentRef.orderByChild('id').equalTo(itemId).once('value');
+      const updates = {};
+      
+      updates[itemId] = null; // Remove direct path
+      
+      if (snapshot.exists()) {
+        snapshot.forEach(child => {
+          updates[child.key] = null; // Remove legacy keys
+        });
+      }
+      
+      await parentRef.update(updates);
       return true;
     } catch (e) {
       console.error(`Error removing item from ${collection}:`, e);
