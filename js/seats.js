@@ -102,6 +102,7 @@ LMS.SeatManagement = () => {
   const [showHallForm, setShowHallForm] = useState(false);
   const [newHall, setNewHall] = useState({ name: '', seatCount: 20 });
   const [viewStudent, setViewStudent] = useState(null);
+  const [editStudent, setEditStudent] = useState(null);
   const [selectedHall, setSelectedHall] = useState(halls[0]?.id || null);
   // Removed duplicate selectedHall
   const [searchTerm, setSearchTerm] = useState('');
@@ -371,8 +372,34 @@ LMS.SeatManagement = () => {
     </${Modal}>
 
     <!-- View Student Modal (Detailed) -->
-    <${Modal} isOpen=${!!viewStudent} onClose=${() => setViewStudent(null)} title=${`Student Detail: ${viewStudent?.name || ''}`} size="xl">
-      ${viewStudent && html`<${LMS.StudentDetailView} student=${viewStudent} onReleaseSeat=${() => releaseSeat(viewStudent)} />`}
+    <${Modal} isOpen=${!!viewStudent} onClose=${() => setViewStudent(null)} title=${`Student Detail: ${viewStudent?.name || ''}`} size="lg">
+      ${viewStudent && html`<${LMS.StudentDetailView} 
+         student=${viewStudent} 
+         onReleaseSeat=${() => releaseSeat(viewStudent)} 
+         onClose=${() => setViewStudent(null)}
+         onEdit=${(s) => setEditStudent(s)}
+      />`}
+    </${Modal}>
+
+    <!-- Edit Student Modal -->
+    <${Modal} isOpen=${!!editStudent} onClose=${() => setEditStudent(null)} title="Edit Student" size="lg">
+      ${editStudent && html`
+        <div class="p-1">
+          <${LMS.InlineStudentForm} 
+            student=${editStudent}
+            onSave=${(s) => {
+               setStudents(prev => prev.map(old => old.id === s.id ? s : old));
+               setEditStudent(null);
+            }}
+            onClear=${() => setEditStudent(null)}
+            halls=${halls}
+            shifts=${shifts}
+            students=${students}
+            payments=${payments}
+            className="" 
+          />
+        </div>
+      `}
     </${Modal}>
 
     <!-- Assign Student to Seat Modal -->
@@ -411,145 +438,4 @@ LMS.SeatManagement = () => {
   </div>`;
 };
 
-// Detailed Student View Component (matching pic 3 exactly)
-LMS.StudentDetailView = ({ student, onReleaseSeat }) => {
-  const { payments, setPayments, shifts, halls, setStudents, showToast, addLog } = useContext(LMS.AppContext);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [editPayment, setEditPayment] = useState(null);
-  const { Button, Modal } = LMS;
 
-  const fin = LMS.calculateStudentFinancials(student, payments);
-  const shift = shifts.find(s => s.id === student.shift);
-  const studentPayments = payments.filter(p => p.studentId === student.id).sort((a, b) => new Date(b.date) - new Date(a.date));
-  const seatLabel = student.seatLabel || LMS.formatSeatLabel(student.assignedSeat, halls);
-  const totalPaid = studentPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-  const handleDeactivate = () => {
-    if (confirm('Deactivate ' + student.name + '?')) {
-      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, isActive: false, deactivatedAt: new Date().toISOString() } : s));
-      addLog('Deactivated student: ' + student.name);
-      showToast('Student deactivated!', 'success');
-    }
-  };
-
-  const handleReset = () => {
-    if (confirm('Reset ' + student.name + '? This clears admission date and payments.')) {
-      setStudents(prev => prev.map(s => s.id === student.id ? {
-        ...s,
-        admissionDate: new Date().toISOString().split('T')[0],
-      } : s));
-      addLog('Reset student: ' + student.name);
-      showToast('Student reset!', 'success');
-    }
-  };
-
-  const handleDeletePayment = (payment) => {
-    const pwd = prompt('Enter password to delete payment:');
-    if (pwd !== '123') {
-      showToast('Incorrect password!', 'error');
-      return;
-    }
-    if (confirm(`Delete payment of ₹${payment.amount}?`)) {
-      setPayments(prev => prev.filter(p => p.id !== payment.id));
-      addLog(`Deleted payment ₹${payment.amount} for ${student.name}`);
-      showToast('Payment deleted!', 'success');
-    }
-  };
-
-  const handleEditPayment = (payment) => {
-    setEditPayment(payment);
-    setShowPaymentForm(true);
-  };
-
-  return html`
-    <div class="grid" style=${{ gridTemplateColumns: '280px 1fr', gap: '1.5rem' }}>
-      <!-- Left Column -->
-      <div class="space-y-4">
-        <!-- Photo & Basic Info -->
-        <div class="text-center p-4 bg-gradient-to-b from-purple-50 to-transparent rounded-xl border">
-          <div class="w-28 h-28 mx-auto rounded-full overflow-hidden border-4 shadow-xl mb-3" style=${{ borderColor: '#c4b5fd', background: '#e9d5ff' }}>
-            ${student.photo
-      ? html`<img src=${student.photo} class="w-full h-full object-cover" />`
-      : html`<div class="w-full h-full flex items-center justify-center text-5xl font-black text-purple-600">${(student.name || '?').charAt(0).toUpperCase()}</div>`
-    }
-          </div>
-          <h3 class="font-black text-xl text-gray-800">${student.name}</h3>
-          <p class="font-bold text-purple-700">Roll No: <span class="text-red-500">${student.rollNo}</span></p>
-          <p class="text-xs text-gray-400">Admitted on: ${LMS.formatDate(student.admissionDate)}</p>
-        </div>
-
-        <!-- Financial Status -->
-        <div class="p-4 bg-card rounded-xl border-l-4 border-pink-500 shadow-sm">
-          <h4 class="font-black text-pink-700 mb-3">Financial Status</h4>
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-gray-600">Monthly Fee:</span><span class="font-bold text-purple-600">₹${student.monthlyFee || 0}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Total Paid:</span><span class="font-bold text-green-600">₹${totalPaid.toLocaleString('en-IN')}</span></div>
-            <div class="flex justify-between items-start">
-              <span class="text-gray-600">Valid Till:</span>
-              <span class="font-bold ${fin.totalDues > 0 ? 'text-red-600' : 'text-green-600'} text-right">${LMS.formatDate(fin.paidUntil)} (${fin.paidMonths} months)</span>
-            </div>
-            <div class="flex justify-between"><span class="text-gray-600">Due Since:</span><span class="font-bold text-gray-800">${fin.dueSince ? LMS.formatDate(fin.dueSince) : 'N/A'}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Total Dues:</span><span class="font-bold text-red-600">₹${fin.totalDues}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Days Overdue:</span><span class="font-bold text-red-500">${fin.daysDue || 0}</span></div>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="space-y-2">
-          <${Button} className="w-full text-white font-bold" style=${{ background: '#22c55e' }} onClick=${() => { setEditPayment(null); setShowPaymentForm(true); }}>ADD PAYMENT</${Button}>
-          <${Button} className="w-full text-white font-bold" style=${{ background: '#6366f1' }}>EDIT DETAILS</${Button}>
-          ${seatLabel && seatLabel !== 'N/A' && html`
-            <${Button} className="w-full text-white font-bold" style=${{ background: '#ef4444' }} onClick=${onReleaseSeat}>RELEASE SEAT ${seatLabel}</${Button}>
-          `}
-          <${Button} className="w-full text-white font-bold" style=${{ background: '#f97316' }} onClick=${handleDeactivate}>DEACTIVATE STUDENT</${Button}>
-          <${Button} className="w-full text-white font-bold" style=${{ background: '#8b5cf6' }} onClick=${handleReset}>RESET STUDENT</${Button}>
-        </div>
-      </div>
-
-      <!-- Right Column -->
-      <div class="space-y-4">
-        <!-- General Information -->
-        <div class="p-4 bg-card rounded-xl shadow-sm border">
-          <h4 class="font-black text-purple-700 text-lg mb-4">General Information</h4>
-          <div class="grid grid-2 gap-4 text-sm">
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Assigned Seat:</span> <span class="font-bold text-purple-600">${seatLabel}</span></div>
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Current Shift:</span> <span class="font-bold text-pink-600">${shift?.name || 'N/A'}</span> ${shift ? `(${shift.startTime} - ${shift.endTime})` : ''}</div>
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Father's Name:</span> <span class="font-bold">${student.fatherName || 'N/A'}</span></div>
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Aadhar:</span> <span class="font-bold">${student.aadhaar || 'N/A'}</span></div>
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Student Mobile:</span> <span class="font-bold">${student.mobile || 'N/A'}</span></div>
-            <div class="p-2 bg-gray-50 rounded"><span class="text-gray-500">Parent Mobile:</span> <span class="font-bold">${student.parentMobile || 'N/A'}</span></div>
-            <div class="p-2 bg-gray-50 rounded col-span-2"><span class="text-gray-500">Admission Date:</span> <span class="font-bold">${LMS.formatDate(student.admissionDate)}</span></div>
-          </div>
-        </div>
-
-        <!-- Payment History -->
-        <div class="p-4 bg-card rounded-xl shadow-sm border">
-          <h4 class="font-black text-pink-600 text-lg mb-4">Payment History</h4>
-          ${studentPayments.length > 0 ? html`
-            <div class="space-y-2 max-h-64 overflow-y-auto">
-              ${studentPayments.map(p => html`
-                <div key=${p.id} class="flex justify-between items-center p-3 bg-gray-50 rounded-lg text-sm border">
-                  <div>
-                    <span class="font-bold text-green-600">₹${p.amount.toLocaleString('en-IN')}</span>
-                    <span class="text-gray-500 ml-2">${LMS.formatDate(p.date)}</span>
-                    ${p.discount > 0 && html`<span class="text-red-500 ml-1">(Disc: ₹${p.discount})</span>`}
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs bg-purple-100 px-2 py-1 rounded-full font-semibold text-purple-600">${p.method || 'cash'}</span>
-                    <button class="text-blue-500 hover:text-blue-700 text-xs" onClick=${() => handleEditPayment(p)}>Edit</button>
-                    <button class="text-red-500 hover:text-red-700 text-xs" onClick=${() => handleDeletePayment(p)}>Delete</button>
-                  </div>
-                </div>
-              `)}
-            </div>
-          ` : html`<p class="text-gray-400 italic">No payment history found.</p>`}
-        </div>
-      </div>
-    </div>
-
-    <!-- Payment Form Modal -->
-    <${Modal} isOpen=${showPaymentForm} onClose=${() => { setShowPaymentForm(false); setEditPayment(null); }} title=${editPayment ? 'Edit Payment' : 'Add Payment'} size="md">
-      <${LMS.PaymentForm} student=${student} payment=${editPayment} onClose=${() => { setShowPaymentForm(false); setEditPayment(null); }} />
-    </${Modal}>
-  `;
-};
