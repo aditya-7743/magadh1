@@ -109,7 +109,8 @@ LMS.calculateStudentFinancials = (student, payments) => {
   let feeChangeIndex = 0;
   let currentFee = feeChanges[0].fee;
   let paidUpToDate = new Date(admissionDate);
-  paidUpToDate.setHours(0, 0, 0, 0);
+  paidUpToDate.setHours(0,0,0,0);
+  paidUpToDate.setDate(paidUpToDate.getDate() - 1);
 
   while (tempPaidAmount >= currentFee && currentFee > 0) {
     tempPaidAmount -= currentFee;
