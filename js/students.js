@@ -5,7 +5,7 @@ window.LMS = window.LMS || {};
 LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, payments, onOpenSeatSelector, className }) => {
   const [form, setForm] = useState(student || {
     rollNo: '', name: '', fatherName: '', mobile: '', parentMobile: '', aadhaar: '',
-    photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 500,
+    photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 600,
     admissionDate: new Date().toISOString().split('T')[0], assignedSeat: '', isActive: true,
     feeChanges: [], pastHistory: [], deactivatedAt: null,
   });
@@ -92,7 +92,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
     } else {
       setForm({
         rollNo: '', name: '', fatherName: '', mobile: '', parentMobile: '', aadhaar: '',
-        photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 500,
+        photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 600,
         admissionDate: new Date().toISOString().split('T')[0], assignedSeat: '', isActive: true,
         feeChanges: [], pastHistory: [], deactivatedAt: null,
       });
@@ -128,7 +128,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
   const resetForm = () => {
     setForm({
       rollNo: '', name: '', fatherName: '', mobile: '', parentMobile: '', aadhaar: '',
-      photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 500,
+      photo: '', formPhoto: '', shift: shifts[0]?.id || '', monthlyFee: 600,
       admissionDate: new Date().toISOString().split('T')[0], assignedSeat: '', isActive: true,
       feeChanges: [], pastHistory: [], deactivatedAt: null,
     });
@@ -261,12 +261,13 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
         <div>
            <label class="input-label">Aadhaar Number</label>
           <input 
-            type="text" 
+            type="tel" 
+            inputMode="numeric"
             class="input-field font-mono" 
             placeholder="12 digit number" 
-            maxLength="14"
+            maxLength="12"
             value=${form.aadhaar || ''} 
-            onChange=${e => handleChange('aadhaar', e.target.value)}
+            onInput=${e => { const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 12); handleChange('aadhaar', v); }}
             style=${{ borderColor: errors.aadhaar ? '#ef4444' : undefined }}
           />
         </div>
@@ -277,10 +278,12 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
             <label class="input-label">Student Mobile</label>
             <input 
               type="tel" 
+              inputMode="numeric"
               class="input-field font-mono" 
               placeholder="10 digits" 
+              maxLength="10"
               value=${form.mobile || ''} 
-              onChange=${e => handleChange('mobile', e.target.value)}
+              onInput=${e => { const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 10); handleChange('mobile', v); }}
               style=${{ borderColor: errors.mobile ? '#ef4444' : undefined }}
             />
           </div>
@@ -288,10 +291,12 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
             <label class="input-label">Parent Mobile</label>
             <input 
               type="tel" 
+              inputMode="numeric"
               class="input-field font-mono" 
               placeholder="10 digits" 
+              maxLength="10"
               value=${form.parentMobile || ''} 
-              onChange=${e => handleChange('parentMobile', e.target.value)}
+              onInput=${e => { const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 10); handleChange('parentMobile', v); }}
               style=${{ borderColor: errors.parentMobile ? '#ef4444' : undefined }}
             />
           </div>
@@ -425,6 +430,10 @@ LMS.StudentCard = ({ student, payments, shifts, halls, settings, onView, onViewP
     }
     if (confirm(`Delete payment of ₹${payment.amount}?`)) {
       setPayments(prev => prev.filter(p => p.id !== payment.id));
+
+      // Cloud Sync
+      if (LMS.DB.removeItem) LMS.DB.removeItem('payments', payment.id);
+
       addLog(`Deleted payment ₹${payment.amount} for ${student.name}`);
       showToast('Payment deleted!', 'success');
     }
@@ -554,7 +563,7 @@ LMS.StudentCard = ({ student, payments, shifts, halls, settings, onView, onViewP
 
 
 // Enhanced Student Detail View with Payment Edit/Delete
-LMS.StudentDetailView = ({ student, onReleaseSeat, onClose }) => {
+LMS.StudentDetailView = ({ student, onReleaseSeat, onClose, onEdit, onUpdate }) => {
   const { payments, setPayments, shifts, halls, setStudents, showToast, addLog, settings } = useContext(LMS.AppContext);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [editPayment, setEditPayment] = useState(null);
@@ -592,15 +601,38 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose }) => {
   };
 
   const handleReset = () => {
-    if (confirm('Reset ' + student.name + '? This clears admission date and payments.')) {
-      const updated = { ...student, admissionDate: new Date().toISOString().split('T')[0] };
+    if (confirm('Reset ' + student.name + '? This will release their seat, archive payments, and open the edit form for re-admission.')) {
+      const studentPayments = payments.filter(p => p.studentId === student.id);
+      const updatedHistory = [...(student.pastHistory || []), { date: new Date().toISOString(), type: 'Reset', archivedPayments: studentPayments }];
+      
+      const updated = { 
+        ...student, 
+        admissionDate: new Date().toISOString().split('T')[0], 
+        assignedSeat: '', // Clear seat
+        shift: shifts && shifts.length > 0 ? shifts[0].id : '', // Reset shift
+        monthlyFee: 600, // Reset fee
+        feeChanges: [], // Clear fee history
+        pastHistory: updatedHistory,
+        isActive: true,
+        deactivatedAt: null 
+      };
       setStudents(prev => prev.map(s => s.id === student.id ? updated : s));
 
-      // Cloud Sync
+      // Cloud Sync Student
       if (LMS.DB.saveItem) LMS.DB.saveItem('students', updated);
+      
+      // Remove all active payments for this student
+      setPayments(prev => prev.filter(p => p.studentId !== student.id));
+      if (LMS.DB.removeItem) {
+        studentPayments.forEach(p => LMS.DB.removeItem('payments', p.id));
+      }
 
-      addLog('Reset student: ' + student.name);
-      showToast('Student reset!', 'success');
+      addLog('Reset student & archived payments: ' + student.name);
+      showToast('Student reset and seat released!', 'success');
+      
+      // Auto-open edit modal for "re-admission"
+      onClose();
+      if (onEdit) onEdit(updated);
     }
   };
 
@@ -715,7 +747,7 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose }) => {
         <!-- General Information -->
         <div class="p-4 bg-card rounded-xl shadow-sm border">
           <h4 class="font-black text-purple-700 text-lg mb-4">General Information</h4>
-          <div class="grid grid-2 gap-4 text-sm">
+          <div class="grid grid-cols-2 gap-4 text-sm">
             <div><span class="text-gray-500">Assigned Seat:</span> <span class="font-bold text-purple-600">${seatLabel}</span></div>
             <div><span class="text-gray-500">Current Shift:</span> <span class="font-bold text-purple-600">${shift?.name || 'N/A'}</span> ${shift ? `(${shift.startTime} - ${shift.endTime})` : ''}</div>
             <div><span class="text-gray-500">Father's Name:</span> <span class="font-bold">${student.fatherName || 'N/A'}</span></div>
@@ -748,6 +780,32 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose }) => {
             </div>
           ` : html`<p class="text-gray-500 italic">No payment history found.</p>`}
         </div>
+
+        <!-- Archived History -->
+        ${student.pastHistory && student.pastHistory.length > 0 && html`
+          <div class="p-4 bg-gray-50 rounded-xl shadow-sm border mt-4">
+            <h4 class="font-bold text-gray-600 text-sm mb-3 uppercase tracking-wider">Archived History</h4>
+            <div class="space-y-3 max-h-48 overflow-y-auto pr-2">
+              ${[...student.pastHistory].reverse().map((history, idx) => html`
+                <div key=${idx} class="p-3 bg-white rounded border border-gray-200 text-sm">
+                  <div class="font-bold text-purple-700 mb-2 border-b pb-1">
+                    Cycle Reset on: ${LMS.formatDate(history.date)}
+                  </div>
+                  ${history.archivedPayments && history.archivedPayments.length > 0 ? html`
+                    <div class="space-y-1">
+                      ${history.archivedPayments.map(p => html`
+                        <div key=${p.id} class="flex justify-between text-xs text-gray-500">
+                          <span>Paid ₹${p.amount}</span>
+                          <span>${LMS.formatDate(p.date)}</span>
+                        </div>
+                      `)}
+                    </div>
+                  ` : html`<p class="text-xs text-gray-400 italic">No payments in this cycle.</p>`}
+                </div>
+              `)}
+            </div>
+          </div>
+        `}
       </div>
     </div>
 
@@ -810,6 +868,10 @@ LMS.StudentManagement = () => {
 
       addLog('Updated student: ' + student.name);
       showToast('Student updated!', 'success');
+      // Refresh viewStudent if it was the same student being viewed
+      if (viewStudent && viewStudent.id === student.id) {
+        setViewStudent(student);
+      }
       // If it was the edit modal, close it
       setEditStudent(null);
     } else {
@@ -832,15 +894,21 @@ LMS.StudentManagement = () => {
       return;
     }
     if (confirm('Delete ' + s.name + '?')) {
+      // Close any open modals/views for this student first
+      if (viewStudent && viewStudent.id === s.id) setViewStudent(null);
+      if (editStudent && editStudent.id === s.id) setEditStudent(null);
+
+      // Capture payment IDs before state update (since payments state might change)
+      const studentPaymentIds = payments.filter(p => p.studentId === s.id).map(p => p.id);
+
       setStudents(prev => prev.filter(x => x.id !== s.id));
       setPayments(prev => prev.filter(p => p.studentId !== s.id));
 
       // Cloud Sync: Remove Student and their Payments
       if (LMS.DB.removeItem) {
         LMS.DB.removeItem('students', s.id);
-        // Find and remove all payments for this student
-        const studentPayments = payments.filter(p => p.studentId === s.id);
-        studentPayments.forEach(p => LMS.DB.removeItem('payments', p.id));
+        // Remove all payments for this student from cloud
+        studentPaymentIds.forEach(pid => LMS.DB.removeItem('payments', pid));
       }
 
       addLog('Deleted student: ' + s.name);
@@ -953,7 +1021,7 @@ LMS.StudentManagement = () => {
     </div>
 
     <${Modal} isOpen=${!!viewStudent} onClose=${() => setViewStudent(null)} title=${`Student Detail: ${viewStudent?.name || ''}`} size="lg">
-      ${viewStudent && html`<${LMS.StudentDetailView} student=${viewStudent} onReleaseSeat=${() => handleReleaseSeat(viewStudent)} onClose=${() => setViewStudent(null)} onEdit=${(s) => setEditStudent(s)} />`}
+      ${viewStudent && html`<${LMS.StudentDetailView} student=${viewStudent} onReleaseSeat=${() => handleReleaseSeat(viewStudent)} onClose=${() => setViewStudent(null)} onEdit=${(s) => setEditStudent(s)} onUpdate=${(s) => setViewStudent(s)} />`}
     </${Modal}>
     
     <!-- View Seat Map Modal -->
