@@ -32,7 +32,7 @@ LMS.daysBetween = (date1, date2) => {
 LMS.validateMobile = (m) => /^\d{10}$/.test(m);
 LMS.validateAadhaar = (a) => /^\d{12}$/.test(a);
 
-LMS.compressImage = (file, maxWidth = 400) => {
+LMS.compressImage = (file, maxWidth = 200) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -44,7 +44,7 @@ LMS.compressImage = (file, maxWidth = 400) => {
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.4));
+        resolve(canvas.toDataURL('image/jpeg', 0.3));
       };
       img.onerror = () => resolve(e.target.result);
       img.src = e.target.result;
@@ -212,8 +212,9 @@ LMS.isShiftComplete = (student, shifts) => {
   }
 };
 
-LMS.getSeatStatus = (seatId, students, payments, shifts) => {
-  const student = students.find(s => s.assignedSeat === seatId && s.isActive);
+LMS.getSeatStatus = (seatId, students, payments, shifts, halls = []) => {
+  const legacyLabel = LMS.formatSeatLabel(seatId, halls);
+  const student = students.find(s => (s.assignedSeat === seatId || s.assignedSeat === legacyLabel) && s.isActive);
   if (!student) return { status: 'available', student: null };
 
   const financials = LMS.calculateStudentFinancials(student, payments);
