@@ -1,15 +1,18 @@
 // ==================== DASHBOARD.JS - Dashboard with QR & Task Manager ====================
 window.LMS = window.LMS || {};
 
-LMS.Dashboard = ({ setCurrentPage }) => {
-  const { students, payments, halls, shifts, settings, activityLog } = useContext(LMS.AppContext);
+LMS.LiveClock = () => {
   const [clock, setClock] = useState(LMS.getISTString());
-  const [showTodayCollection, setShowTodayCollection] = useState(true);
-
   useEffect(() => {
     const t = setInterval(() => setClock(LMS.getISTString()), 1000);
     return () => clearInterval(t);
   }, []);
+  return html`<span class="mono text-sm text-gray-500">${clock}</span>`;
+};
+
+LMS.Dashboard = ({ setCurrentPage }) => {
+  const { students, payments, halls, shifts, settings, activityLog } = useContext(LMS.AppContext);
+  const [showTodayCollection, setShowTodayCollection] = useState(true);
 
   // OPTIMIZATION: Memoize heavy calculations to prevent lag on clock tick
   const stats = useMemo(() => {
@@ -88,8 +91,8 @@ LMS.Dashboard = ({ setCurrentPage }) => {
     <!-- Header with Library Name and Clock -->
     <div class="flex items-center justify-between flex-wrap gap-2">
       <div>
-        <h1 class="text-3xl font-black text-primary-gradient">${settings.libraryName}</h1>
-        <span class="mono text-sm text-gray-500">${clock}</span>
+        <h1 style=${{ fontFamily: '"Cinzel", serif', letterSpacing: '0.05em' }} class="text-3xl font-black text-indigo-400 drop-shadow-md uppercase">${settings.libraryName}</h1>
+        <${LMS.LiveClock} />
       </div>
     </div>
 
