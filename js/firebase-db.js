@@ -271,21 +271,38 @@ LMS.DB = {
         val = Object.values(val);
       }
 
-      // UNIVERSAL DEDUPLICATION
-      // Prevents "ghost" duplicates if network retries happen
+      // UNIVERSAL DEDUPLICATION & MERGE
+      // Prevents "ghost" duplicates and protects local-only offline data from being erased by cloud fetch
       if (Array.isArray(val)) {
         const uniqueMap = new Map();
+        
+        // 1. Load local data first to protect unsynced offline records
+        const localData = this.localLoad(key) || [];
+        if (Array.isArray(localData)) {
+          localData.forEach(item => {
+            if (item && item.id) uniqueMap.set(item.id, item);
+          });
+        }
+
+        // 2. Merge cloud data (cloud overwrites local to ensure latest state)
         val.forEach(item => {
           if (item && item.id) {
-            // If duplicate ID exists, keep the one with newer timestamp or merge?
-            // For simplicity, last one wins (Firebase order is usually consistent)
             uniqueMap.set(item.id, item);
           } else {
-            // Items without ID (shouldn't happen, but fallback)
             uniqueMap.set(JSON.stringify(item), item);
           }
         });
+        
         val = Array.from(uniqueMap.values());
+
+        // 3. Auto-push if local had items that cloud didn't
+        if (Array.isArray(localData)) {
+          const cloudIds = new Set(snapshot.val() ? Object.values(snapshot.val()).map(i => i.id) : []);
+          const hasLocalOnly = localData.some(i => i && i.id && !cloudIds.has(i.id));
+          if (hasLocalOnly) {
+            setTimeout(() => this.syncLocalToCloud(), 2000);
+          }
+        }
       }
 
       callback(val);
@@ -442,6 +459,21 @@ LMS.DB = {
         }
 
         if (val !== null) {
+          if (arrayKeys.includes(key)) {
+            const localData = this.localLoad(key) || [];
+            if (Array.isArray(localData) && Array.isArray(val)) {
+              const uniqueMap = new Map();
+              localData.forEach(item => { if (item && item.id) uniqueMap.set(item.id, item); });
+              val.forEach(item => { if (item && item.id) uniqueMap.set(item.id, item); });
+              val = Array.from(uniqueMap.values());
+              
+              const cloudIds = new Set(snapshot.val() ? Object.values(snapshot.val()).map(i => i.id) : []);
+              const hasLocalOnly = localData.some(i => i && i.id && !cloudIds.has(i.id));
+              if (hasLocalOnly) {
+                setTimeout(() => this.syncLocalToCloud(), 2000);
+              }
+            }
+          }
           this.localSave(key, val);
         }
       }
