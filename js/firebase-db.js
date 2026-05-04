@@ -38,9 +38,37 @@ LMS.DB = {
   auth: null,
   userId: null,
   isConfigured: false,
-  isOnline: false,
+  isOnline: navigator.onLine,
   listeners: {},
   syncCallbacks: {},
+
+  enqueueOfflineAction(action) {
+    let queue = this.localLoad('offline_queue') || [];
+    queue.push({ ...action, timestamp: Date.now() });
+    this.localSave('offline_queue', queue);
+  },
+
+  async processOfflineQueue() {
+    let queue = this.localLoad('offline_queue') || [];
+    if (queue.length === 0) return;
+    
+    console.log(`Processing ${queue.length} offline actions...`);
+    const newQueue = [];
+    for (const action of queue) {
+      let success = false;
+      try {
+        if (action.type === 'saveItem') {
+           success = await this.saveItem(action.collection, action.item, true); 
+        } else if (action.type === 'removeItem') {
+           success = await this.removeItem(action.collection, action.itemId, true);
+        }
+      } catch(e) {
+        success = false;
+      }
+      if (!success) newQueue.push(action);
+    }
+    this.localSave('offline_queue', newQueue);
+  },
 
   init() {
     try {
@@ -75,10 +103,20 @@ LMS.DB = {
     this.auth.onAuthStateChanged((user) => {
       if (user) {
         this.userId = user.uid;
-        this.isOnline = true;
+        this.isOnline = navigator.onLine;
+        
+        window.addEventListener('online', () => {
+          this.isOnline = true;
+          this.processOfflineQueue();
+        });
+        window.addEventListener('offline', () => {
+          this.isOnline = false;
+        });
+
         if (this.syncCallbacks.onAuth) this.syncCallbacks.onAuth(user);
         // TRIGGER V2 MIGRATION AFTER LOGIN
         this.migrateToV2();
+        if (this.isOnline) this.processOfflineQueue();
       } else {
         this.userId = null;
         this.isOnline = false;
@@ -310,8 +348,13 @@ LMS.DB = {
   },
 
   // Sync a single item (Granular Update) - FAST & SAFE
-  async saveItem(collection, item) {
+  async saveItem(collection, item, skipQueue = false) {
     if (!this.isConfigured || !this.userId || !item.id) return false;
+    
+    if (!navigator.onLine && !skipQueue) {
+      this.enqueueOfflineAction({ type: 'saveItem', collection, item });
+      return true; // Pretend it succeeded locally
+    }
     try {
       const parentRef = this.db.ref(this.getPath(collection));
       const snapshot = await parentRef.orderByChild('id').equalTo(item.id).once('value');
@@ -335,8 +378,13 @@ LMS.DB = {
   },
 
   // Remove a single item
-  async removeItem(collection, itemId) {
+  async removeItem(collection, itemId, skipQueue = false) {
     if (!this.isConfigured || !this.userId || !itemId) return false;
+
+    if (!navigator.onLine && !skipQueue) {
+      this.enqueueOfflineAction({ type: 'removeItem', collection, itemId });
+      return true;
+    }
     try {
       const parentRef = this.db.ref(this.getPath(collection));
       const snapshot = await parentRef.orderByChild('id').equalTo(itemId).once('value');
