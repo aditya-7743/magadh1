@@ -17,6 +17,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
   const videoRef = useRef(null);
 
   const { Button, Input, Select, ImageViewer, Modal } = LMS;
+  const { showToast } = useContext(LMS.AppContext);
 
   // WebCam Logic
   const startWebcam = async (field) => {
@@ -153,7 +154,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
 
   const handleSeatSelect = (seatId) => {
     if (students && payments) {
-      const { status, student: occupiedBy } = LMS.getSeatStatus(seatId, students, payments, shifts);
+      const { status, student: occupiedBy } = LMS.getSeatStatus(seatId, students, payments, shifts, halls);
       if (status !== 'available' && occupiedBy && occupiedBy.id !== form.id) {
         alert(`Seat ${seatId} is already assigned to ${occupiedBy.name}. Please release the seat first.`);
         return;
@@ -309,7 +310,8 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
             <input 
               type="date" 
               class="input-field" 
-              value=${form.admissionDate} 
+              value=${form.admissionDate}
+              max="2099-12-31" 
               onChange=${e => handleChange('admissionDate', e.target.value)} 
             />
           </div>
@@ -576,6 +578,23 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose, onEdit, onUpdate }) 
   const seatLabel = student.assignedSeat ? LMS.formatSeatLabel(student.assignedSeat, halls) : 'N/A';
   const totalPaid = studentPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
+  const handleWhatsApp = (type) => {
+    const phone = (student.mobile || student.parentMobile || '').replace(/[^0-9]/g, '');
+    if (!phone) { showToast('No mobile number found!', 'error'); return; }
+    let msg = '';
+    if (type === 'welcome') {
+      const template = settings.welcomeTemplate || 'Welcome to {library}, {name}! Your Roll No is {roll}.';
+      msg = template.replace('{name}', student.name).replace('{roll}', student.rollNo).replace('{library}', settings.libraryName);
+    } else if (type === 'due') {
+      const template = settings.whatsappTemplate || 'Dear {name}, your library fee of ₹{due} is due since {dueDate}. Please pay at your earliest. - {library}';
+      msg = template.replace('{name}', student.name).replace('{due}', fin.totalDues).replace('{dueDate}', LMS.formatDate(fin.dueSince)).replace('{library}', settings.libraryName);
+    } else if (type === 'absent') {
+      const template = settings.absentTemplate || 'Dear {name}, you were absent today at {library}. Roll: {roll}. Please maintain regularity.';
+      msg = template.replace('{name}', student.name).replace('{roll}', student.rollNo).replace('{library}', settings.libraryName);
+    }
+    window.open('https://wa.me/91' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+  };
+
   const handleDeactivate = () => {
     if (confirm('Deactivate ' + student.name + '?')) {
       const updated = { ...student, isActive: false, deactivatedAt: new Date().toISOString(), assignedSeat: null };
@@ -711,7 +730,7 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose, onEdit, onUpdate }) 
         </div>
 
         <!-- Communication -->
-        <div class="grid grid-3 gap-2 mb-2">
+        <div class="grid grid-cols-3 gap-2 mb-2">
            <button class="btn text-white text-xs font-bold flex flex-col items-center justify-center p-2 rounded shadow hover:scale-105 transition-transform" 
              style=${{ background: '#25D366' }} onClick=${() => handleWhatsApp('welcome')}>
              <span>👋</span> Welcome
