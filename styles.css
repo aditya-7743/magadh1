@@ -1,6 +1,7 @@
 /* ========== LIBRARY MANAGEMENT SYSTEM - PROFESSIONAL THEME ========== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&display=swap');
 
 :root {
   /* Professional Brand Colors - Crisp & Trustworthy */
@@ -97,13 +98,13 @@
   --indigo: #818cf8;
   --violet: #a78bfa;
 
-  /* Dark Backgrounds */
-  --bg-body: #0f172a;
-  --bg-light: #0f172a;
-  --bg-card: #1e293b;
-  --bg-sidebar: #1e293b;
-  --bg-hover: #334155;
-  --bg-glass: rgba(15, 23, 42, 0.92);
+  /* Dark Backgrounds - Complete Pitch Black */
+  --bg-body: #000000;
+  --bg-light: #000000;
+  --bg-card: #111111;
+  --bg-sidebar: #111111;
+  --bg-hover: #222222;
+  --bg-glass: rgba(0, 0, 0, 0.92);
 
   /* Dark Text */
   --gray-900: #f8fafc;
@@ -119,7 +120,7 @@
   --text-light: #64748b;
 
   /* Dark Borders & Shadows */
-  --border-color: #334155;
+  --border-color: #222222;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
@@ -127,15 +128,15 @@
   --shadow-glow: 0 0 30px rgba(129, 140, 248, 0.3);
 
   /* Seat Card Gradients (Dark) */
-  --seat-available-bg: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-  --seat-available-border: #475569;
+  --seat-available-bg: linear-gradient(135deg, #111111 0%, #222222 100%);
+  --seat-available-border: #333333;
   --seat-due-bg: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%);
   --seat-due-border: #991b1b;
   --seat-paid-bg: linear-gradient(135deg, #052e16 0%, #14532d 100%);
   --seat-paid-border: #166534;
 
   /* Utility Overrides for Dark Mode */
-  --bg-gray-50: #1e293b;
+  --bg-gray-50: #111111;
   --bg-purple-50: rgba(147, 51, 234, 0.1);
   --bg-pink-50: rgba(236, 72, 153, 0.1);
   --bg-blue-50: rgba(59, 130, 246, 0.1);
@@ -154,9 +155,9 @@
   /* Burgundy */
 
   /* Glassmorphism */
-  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-bg: rgba(0, 0, 0, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
 
   /* Helper to make text readable on dark bg */
   --text-purple-700: #d8b4fe;
@@ -262,76 +263,262 @@
 
 /* Apply overrides to utility classes in dark mode */
 [data-theme="dark"] .bg-gray-50 {
-  background-color: var(--bg-gray-50);
+  background-color: var(--bg-gray-50) !important;
 }
 
 [data-theme="dark"] .bg-purple-50 {
-  background-color: var(--bg-purple-50);
+  background-color: var(--bg-purple-50) !important;
 }
 
 [data-theme="dark"] .bg-pink-50 {
-  background-color: var(--bg-pink-50);
+  background-color: var(--bg-pink-50) !important;
 }
 
 [data-theme="dark"] .bg-blue-50 {
-  background-color: var(--bg-blue-50);
+  background-color: var(--bg-blue-50) !important;
 }
 
 [data-theme="dark"] .bg-green-50 {
-  background-color: var(--bg-green-50);
+  background-color: var(--bg-green-50) !important;
 }
 
 [data-theme="dark"] .bg-yellow-50 {
-  background-color: var(--bg-yellow-50);
+  background-color: var(--bg-yellow-50) !important;
 }
 
 [data-theme="dark"] .bg-orange-50 {
-  background-color: var(--bg-orange-50);
+  background-color: var(--bg-orange-50) !important;
 }
 
 [data-theme="dark"] .bg-indigo-50 {
-  background-color: var(--bg-indigo-50);
+  background-color: var(--bg-indigo-50) !important;
 }
 
 [data-theme="dark"] .text-purple-700 {
-  color: var(--text-purple-700);
+  color: var(--text-purple-700) !important;
 }
 
 [data-theme="dark"] .text-pink-700 {
-  color: var(--text-pink-700);
+  color: var(--text-pink-700) !important;
 }
 
 [data-theme="dark"] .text-green-700 {
-  color: var(--text-green-700);
+  color: var(--text-green-700) !important;
 }
 
 [data-theme="dark"] .text-red-700 {
-  color: var(--text-red-700);
+  color: var(--text-red-700) !important;
 }
 
 [data-theme="dark"] .text-yellow-700 {
-  color: var(--text-yellow-700);
+  color: var(--text-yellow-700) !important;
 }
 
 [data-theme="dark"] .text-indigo-700 {
-  color: var(--text-indigo-700);
+  color: var(--text-indigo-700) !important;
 }
 
 [data-theme="dark"] .text-blue-700 {
-  color: var(--text-blue-700);
+  color: var(--text-blue-700) !important;
 }
 
 [data-theme="dark"] .text-gray-700 {
-  color: var(--text-gray-700);
+  color: var(--text-gray-700) !important;
 }
 
 [data-theme="dark"] .text-gray-600 {
-  color: var(--text-gray-600);
+  color: var(--text-gray-600) !important;
 }
 
 /* Ensure seat text is readable */
 [data-theme="dark"] .text-gray-800 {
-  color: #f1f5f9;
+  color: #f1f5f9 !important;
+}
+
+/* Additional Dark Mode Overrides for commonly used Tailwind classes */
+[data-theme="dark"] .bg-white {
+  background-color: var(--bg-card) !important;
+}
+
+[data-theme="dark"] .bg-gray-100 {
+  background-color: #111111 !important;
+}
+
+[data-theme="dark"] .bg-gray-200 {
+  background-color: #222222 !important;
+}
+
+[data-theme="dark"] .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .text-gray-500 {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .border-gray-200 {
+  border-color: #222222 !important;
+}
+
+[data-theme="dark"] .border-gray-300 {
+  border-color: #333333 !important;
+}
+
+[data-theme="dark"] .border {
+  border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+[data-theme="dark"] .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+
+[data-theme="dark"] .bg-emerald-50,
+[data-theme="dark"] .bg-teal-50 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+[data-theme="dark"] .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+[data-theme="dark"] .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+[data-theme="dark"] .bg-green-200 {
+  background-color: rgba(34, 197, 94, 0.25) !important;
+}
+
+[data-theme="dark"] .bg-red-200 {
+  background-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+[data-theme="dark"] .bg-pink-200 {
+  background-color: rgba(236, 72, 153, 0.25) !important;
+}
+
+[data-theme="dark"] .bg-amber-200 {
+  background-color: rgba(245, 158, 11, 0.25) !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-50:hover {
+  background-color: #222222 !important;
+}
+
+[data-theme="dark"] .hover\:bg-gray-200:hover {
+  background-color: #333333 !important;
+}
+
+[data-theme="dark"] .bg-card {
+  background-color: var(--bg-card) !important;
+}
+
+/* Dark mode text color overrides */
+[data-theme="dark"] .text-indigo-800,
+[data-theme="dark"] .text-indigo-900 {
+  color: #a5b4fc !important;
+}
+
+[data-theme="dark"] .text-purple-600 {
+  color: #c4b5fd !important;
+}
+
+[data-theme="dark"] .text-pink-600,
+[data-theme="dark"] .text-pink-800,
+[data-theme="dark"] .text-pink-900 {
+  color: #f9a8d4 !important;
+}
+
+[data-theme="dark"] .text-green-600,
+[data-theme="dark"] .text-green-800,
+[data-theme="dark"] .text-green-900 {
+  color: #86efac !important;
+}
+
+[data-theme="dark"] .text-red-600,
+[data-theme="dark"] .text-red-500,
+[data-theme="dark"] .text-red-900 {
+  color: #fca5a5 !important;
+}
+
+[data-theme="dark"] .text-amber-600,
+[data-theme="dark"] .text-orange-800,
+[data-theme="dark"] .text-orange-900 {
+  color: #fcd34d !important;
+}
+
+[data-theme="dark"] .text-blue-600,
+[data-theme="dark"] .text-blue-900 {
+  color: #93c5fd !important;
+}
+
+[data-theme="dark"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Dark mode border colors */
+[data-theme="dark"] .border-red-500 {
+  border-color: #ef4444 !important;
+}
+
+[data-theme="dark"] .border-green-500 {
+  border-color: #22c55e !important;
+}
+
+[data-theme="dark"] .border-indigo-500 {
+  border-color: #6366f1 !important;
+}
+
+[data-theme="dark"] .border-pink-500 {
+  border-color: #ec4899 !important;
+}
+
+[data-theme="dark"] .border-purple-500 {
+  border-color: #a855f7 !important;
+}
+
+[data-theme="dark"] .border-orange-200 {
+  border-color: rgba(249, 115, 22, 0.3) !important;
+}
+
+/* Dark mode table */
+[data-theme="dark"] table {
+  color: var(--text-dark) !important;
+}
+
+[data-theme="dark"] th {
+  background-color: #111111 !important;
+  color: #e2e8f0 !important;
+  border-color: #222222 !important;
+}
+
+[data-theme="dark"] td {
+  border-color: #222222 !important;
+}
+
+[data-theme="dark"] tr:hover {
+  background-color: #222222 !important;
+}
+
+/* Dark scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #333333 !important;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #444444 !important;
 }
 
 /* Theme Toggle Button */
