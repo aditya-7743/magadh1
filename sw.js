@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lms-v2';
+const CACHE_NAME = 'lms-v6';
 const urlsToCache = [
     './',
     './index.html',
