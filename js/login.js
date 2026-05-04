@@ -1,5 +1,4 @@
-// ==================== LOGIN.JS - Light Theme Login Page ====================
-window.LMS = window.LMS || {};
+
 
 // ==================== LOGIN.JS - Royal Theme Login Page ====================
 window.LMS = window.LMS || {};
@@ -18,9 +17,25 @@ LMS.LoginPage = ({ onLogin }) => {
     const owner = LMS.DB.localLoad('owner') || LMS.DEFAULT_OWNER;
     const { Button, Input, Card, Icons } = LMS;
 
-    // Background Animation
+    // Check for pending redirect result (mobile sign-in flow)
     useEffect(() => {
-        // Add particle effect logic here if needed, or rely on CSS animations
+        if (LMS.DB.isConfigured && firebase?.auth) {
+            setLoading(true);
+            firebase.auth().getRedirectResult().then(result => {
+                if (result?.user) {
+                    setFirebaseUser(result.user);
+                    LMS.DB.userId = result.user.uid;
+                    LMS.DB.syncCloudToLocal().then(() => {
+                        LMS.DB.localSave('session', { loggedIn: true, timestamp: Date.now() });
+                        onLogin();
+                    });
+                } else {
+                    setLoading(false);
+                }
+            }).catch(() => {
+                setLoading(false);
+            });
+        }
     }, []);
 
     const handleLogin = (e) => {
@@ -239,7 +254,7 @@ LMS.LoginPage = ({ onLogin }) => {
             </div>
             
             <p class="text-center text-gray-500 text-xs mt-8 opacity-60">
-                &copy; 2024 Magadh Library. All Rights Reserved. <br/>
+                &copy; ${new Date().getFullYear()} Magadh Library. All Rights Reserved. <br/>
                 Protected by secure authentication.
             </p>
         </div>
