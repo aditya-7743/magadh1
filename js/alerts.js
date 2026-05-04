@@ -47,7 +47,7 @@ LMS.Alerts = () => {
       <div class="space-y-2">
         ${list.map(s => {
           const fin = LMS.calculateStudentFinancials(s, payments);
-          return html`<div key=${s.id} class="flex justify-between items-center p-2" style=${{background:'rgba(30,41,59,0.5)',borderRadius:'0.5rem'}}>
+          return html`<div key=${s.id} class="flex justify-between items-center p-2" style=${{background:'var(--bg-card, #f8fafc)',borderRadius:'0.5rem',border:'1px solid var(--border-color, #e2e8f0)'}}>
             <div class="text-sm"><span class="mono text-primary-400">${s.rollNo}</span> — ${s.name}</div>
             <div class="text-right text-sm">
               <div class="text-slate-400">Due since: ${LMS.formatDate(fin.dueSince)}</div>
