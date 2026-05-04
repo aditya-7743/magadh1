@@ -275,10 +275,17 @@ LMS.SkeletonDashboard = () => {
 // Bottom Status Bar with Backup Timer
 LMS.BottomStatusBar = () => {
   const { students, payments, halls, shifts, settings, activityLog, showToast } = useContext(LMS.AppContext);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(300);
   const [backupStatus, setBackupStatus] = useState('idle'); // 'idle' | 'done' | 'backing'
   const [lastBackup, setLastBackup] = useState(null);
-  const [localBackupDir, setLocalBackupDir] = useState(LMS.DB.localLoad('backupDirectory') || null);
+  const [localBackupDir, setLocalBackupDir] = useState(null);
+
+  // Load directory handle from IndexedDB (can't be stored in localStorage)
+  useEffect(() => {
+    LMS.IDB.get('backupDirectory').then(handle => {
+      if (handle) setLocalBackupDir(handle);
+    }).catch(() => {});
+  }, []);
 
   // Get seat stats
   const totalSeats = halls.reduce((sum, h) => sum + (h.seatCount || 0), 0);
@@ -292,7 +299,7 @@ LMS.BottomStatusBar = () => {
         if (prev <= 1) {
           // Trigger backup
           performBackup();
-          return 30;
+          return 300;
         }
         return prev - 1;
       });
