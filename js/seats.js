@@ -58,7 +58,7 @@ LMS.SeatSelector = ({ onSelect, onClose, initialSeat, readOnly }) => {
         ${currentHall && seatCount > 0 ? Array.from({ length: seatCount }, (_, i) => {
       const seatId = currentHall.id + '-' + (i + 1);
       const seatLabel = hallPrefix + (i + 1);
-      const { status, student } = LMS.getSeatStatus(seatId, students, payments, shifts);
+      const { status, student } = LMS.getSeatStatus(seatId, students, payments, shifts, halls);
 
       // Filter
       if (searchTerm && !seatLabel.toLowerCase().includes(searchTerm.toLowerCase())) return null;
@@ -169,8 +169,8 @@ LMS.SeatManagement = () => {
   // Assign student to seat
   const assignStudentToSeat = (student, seatId) => {
     // Check if seat is already assigned to another active student
-    const occupant = students.find(s => s.assignedSeat === seatId && s.isActive && s.id !== student.id);
-    if (occupant) {
+    const { student: occupant } = LMS.getSeatStatus(seatId, students, payments, shifts, halls);
+    if (occupant && occupant.id !== student.id) {
       alert(`Seat ${LMS.formatSeatLabel(seatId, halls)} is already assigned to ${occupant.name}. Please release it first.`);
       return;
     }
@@ -203,7 +203,7 @@ LMS.SeatManagement = () => {
   const seatCount = currentHall ? (Number(currentHall.seatCount) || 0) : 0;
   const hallSeats = currentHall && seatCount > 0 ? Array.from({ length: seatCount }, (_, i) => {
     const seatId = currentHall.id + '-' + (i + 1);
-    return LMS.getSeatStatus(seatId, students, payments, shifts);
+    return LMS.getSeatStatus(seatId, students, payments, shifts, halls);
   }) : [];
   const occupiedCount = hallSeats.filter(s => s.status !== 'available').length;
   const availableCount = hallSeats.filter(s => s.status === 'available').length;
@@ -243,6 +243,11 @@ LMS.SeatManagement = () => {
               ${hall.name}
             </button>
           `)}
+          <button 
+            onClick=${() => setShowHallForm(true)}
+            class="px-3 py-2 rounded-lg font-bold text-sm bg-green-500 text-white hover:bg-green-600 transition-all shadow-sm"
+            title="Add New Hall"
+          >+ Hall</button>
         </div>
       </div>
     </div>
@@ -253,7 +258,7 @@ LMS.SeatManagement = () => {
         ${Array.from({ length: seatCount }, (_, i) => {
       const seatId = currentHall.id + '-' + (i + 1);
       const seatLabel = hallPrefix + (i + 1);
-      const { status, student } = LMS.getSeatStatus(seatId, students, payments, shifts);
+      const { status, student } = LMS.getSeatStatus(seatId, students, payments, shifts, halls);
       const fin = student ? LMS.calculateStudentFinancials(student, payments) : null;
       const shift = student ? shifts.find(s => s.id === student.shift) : null;
 
