@@ -13,6 +13,62 @@ LMS.Accounts = () => {
   const [analyticsMode, setAnalyticsMode] = useState('thisMonth'); // 'thisMonth', 'last3', 'last6', 'year', 'month'
   const [analyticsDate, setAnalyticsDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // Chart data computation (replaces window._tempChartData hack)
+  const chartComputed = useMemo(() => {
+    let dataPoints = [];
+    const refDate = new Date(analyticsDate);
+    const now = new Date();
+
+    if (analyticsMode === 'thisMonth') {
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        dataPoints.push({ d: new Date(now.getFullYear(), now.getMonth(), i), label: i });
+      }
+    } else if (analyticsMode === 'last3') {
+      for (let i = 2; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i);
+        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
+      }
+    } else if (analyticsMode === 'last6') {
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i);
+        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
+      }
+    } else if (analyticsMode === 'last12') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i);
+        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
+      }
+    } else if (analyticsMode === 'year') {
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(refDate.getFullYear(), i, 1);
+        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
+      }
+    } else if (analyticsMode === 'month') {
+      const year = refDate.getFullYear();
+      const month = refDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        const d = new Date(year, month, i);
+        dataPoints.push({ d, label: i });
+      }
+    }
+
+    const chartData = dataPoints.map(pt => {
+      const isSamePeriod = (d1, d2) => {
+        if (analyticsMode === 'month' || analyticsMode === 'thisMonth')
+          return d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+        return d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+      };
+      const inc = payments.filter(p => isSamePeriod(new Date(p.date), pt.d)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const exp = expenses.filter(e => isSamePeriod(new Date(e.date), pt.d)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      return { label: pt.label, income: inc, expense: exp, net: inc - exp };
+    });
+
+    const maxVal = Math.max(100, ...chartData.map(m => Math.max(m.income, m.expense)));
+    return { data: chartData, max: maxVal };
+  }, [analyticsMode, analyticsDate, payments, expenses]);
+
   const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: new Date().toISOString().split('T')[0] });
   const [paymentModal, setPaymentModal] = useState({ open: false, student: null });
   const [duesFilter, setDuesFilter] = useState({
@@ -299,7 +355,7 @@ LMS.Accounts = () => {
         });
 
         const maxVal = Math.max(100, ...chartData.map(m => Math.max(m.income, m.expense)));
-        window._tempChartData = { data: chartData, max: maxVal }; // Hack to pass data to next bracket
+        window._tempChartData = chartComputed; // Use precomputed useMemo data
 
         return html`
                         <span>₹${Math.round(maxVal).toLocaleString()}</span>
@@ -314,7 +370,7 @@ LMS.Accounts = () => {
                  <!-- Bars Area -->
                  <div class="flex-1 flex items-end gap-1 h-full pl-1 overflow-x-auto custom-scrollbar">
                     ${(() => {
-        const { data, max } = window._tempChartData || { data: [], max: 100 };
+        const { data, max } = chartComputed;
         const totalInc = data.reduce((s, c) => s + c.income, 0);
         const totalExp = data.reduce((s, c) => s + c.expense, 0);
 
