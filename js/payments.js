@@ -103,7 +103,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
       <${Input} label="Discount (₹)" type="number" value=${form.discount} onChange=${e => setForm(p => ({ ...p, discount: Number(e.target.value) }))} />
       <${Select} label="Method" value=${form.method} onChange=${e => setForm(p => ({ ...p, method: e.target.value }))} options=${[{ value: 'cash', label: 'Cash' }, { value: 'online', label: 'Online' }]} />
     </div>
-    <${Input} label="Date" type="date" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
+    <${Input} label="Date" type="date" max="2099-12-31" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
     <${Input} label="Note" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} placeholder="Optional note..." />
     
     <div>
@@ -247,7 +247,7 @@ LMS.PaymentManagement = () => {
               ${payment.note && html`<p class="text-sm text-slate-500 mt-1">${payment.note}</p>`}
             </div>
             <div class="flex items-center gap-3">
-              <span class="text-xl font-bold text-emerald-400">${LMS.formatCurrency(payment.amount)}</span>
+              <span class="text-xl font-bold text-emerald-600">${LMS.formatCurrency(payment.amount)}</span>
               ${payment.photo && html`<button class="btn btn-ghost btn-sm" onClick=${() => setViewImage(payment.photo)}><${Icons.Eye} /></button>`}
               ${student?.mobile && html`<button class="btn btn-ghost btn-sm text-green-400" onClick=${() => sendWhatsApp(student, LMS.getDueAmount(student, payments))}><${Icons.WhatsApp} /></button>`}
               <${Button} size="sm" variant="ghost" onClick=${() => { 
@@ -285,7 +285,7 @@ LMS.PaymentManagement = () => {
           <${Input} label="Discount (₹)" type="number" value=${form.discount} onChange=${e => setForm(p => ({ ...p, discount: Number(e.target.value) }))} />
           <${Select} label="Method" value=${form.method} onChange=${e => setForm(p => ({ ...p, method: e.target.value }))} options=${[{ value: 'cash', label: 'Cash' }, { value: 'online', label: 'Online' }]} />
         </div>
-        <${Input} label="Date" type="date" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
+        <${Input} label="Date" type="date" max="2099-12-31" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
         <${Input} label="Note" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} placeholder="Optional note..." />
         <div>
           <label class="input-label">Receipt Photo</label>
