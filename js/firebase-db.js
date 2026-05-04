@@ -163,6 +163,21 @@ LMS.DB = {
   },
 
   getPath(key) {
+    // V2 MIGRATION: ISOLATE GRANULAR DATA TO PREVENT LEGACY OVERWRITES
+    const v2Keys = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'];
+
+    // Check if key is already suffixed (e.g. from internal calls)
+    if (key.endsWith('_v2')) return `users/${this.userId}/${key}`;
+
+    // Check if it's a child path (e.g. 'attendance/2023-10-01')
+    const parts = key.split('/');
+    const rootKey = parts[0];
+
+    if (v2Keys.includes(rootKey)) {
+      parts[0] = rootKey + '_v2';
+      return `users/${this.userId}/${parts.join('/')}`;
+    }
+
     return `users/${this.userId}/${key}`;
   },
 
@@ -388,9 +403,13 @@ LMS.DB = {
         if (Array.isArray(localList) && localList.length > 0) {
           const updates = {};
 
+          // Determine if this key needs _v2 suffix (match logic in getPath)
+          const isV2 = ['students', 'payments', 'halls', 'shifts', 'expenses', 'activityLog', 'pendingWork', 'attendance'].includes(key);
+          const targetKey = isV2 ? `${key}_v2` : key;
+
           localList.forEach(item => {
             if (item.id) {
-              updates[`${key}/${item.id}`] = item;
+              updates[`${targetKey}/${item.id}`] = item;
             }
           });
           // Perform a multi-path update
