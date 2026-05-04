@@ -37,6 +37,7 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage, onLogout, isMobileOpen, setIsMob
     { id: 'accounts', label: 'Accounts', icon: Icons.Payments },
     { id: 'attendance', label: 'Attendance', icon: Icons.Log },
     { id: 'activity', label: 'Activity', icon: Icons.Log },
+    { id: 'alerts', label: 'Alerts', icon: Icons.Log },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
 
@@ -57,8 +58,9 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage, onLogout, isMobileOpen, setIsMob
         <div class="nav-logo">
           <div class="logo-icon">📚</div>
           <div class="logo-text hidden md:block">
-            <h1>${settings.libraryName}</h1>
-            <p>Management System</p>
+            <h1 style=${{ fontFamily: '"Cinzel", serif', letterSpacing: '0.05em' }} class="text-xl md:text-2xl font-black uppercase text-indigo-400 drop-shadow-md">
+              ${settings.libraryName}
+            </h1>
           </div>
         </div>
 
@@ -122,15 +124,12 @@ LMS.App = () => {
   const [activityLog, setActivityLog] = useState(() => LMS.DB.localLoad('activityLog') || []);
   const [pendingWork, setPendingWork] = useState(() => LMS.DB.localLoad('pendingWork') || []);
   const [expenses, setExpenses] = useState(() => LMS.DB.localLoad('expenses') || []);
-  const [details, setDetails] = useState(() => LMS.DB.localLoad('details') || []);
+
 
   // Remote update flag to prevent loops (per key)
   const isRemoteUpdate = useRef({});
 
-  // Initialize Firebase
-  useEffect(() => {
-    LMS.DB.init();
-  }, []);
+
 
   // Load data helper
   const refreshStateFromLocal = useCallback(() => {
@@ -158,7 +157,7 @@ LMS.App = () => {
     setActivityLog(LMS.DB.localLoad('activityLog') || []);
     setPendingWork(LMS.DB.localLoad('pendingWork') || []);
     setExpenses(LMS.DB.localLoad('expenses') || []);
-    setDetails(LMS.DB.localLoad('details') || []); // Ensure this is loaded if used
+
 
     setLoading(false);
   }, []);
