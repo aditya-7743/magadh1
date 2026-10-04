@@ -13,7 +13,9 @@ LMS.SqlApi = {
     for (const [key, value] of Object.entries(query)) if (value !== null && value !== undefined && value !== '') url.searchParams.set(key, String(value));
     const send = async refresh => fetch(url, {
       method, signal, cache: 'no-store', credentials: 'omit',
-      headers: { Authorization: 'Bearer ' + await user.getIdToken(refresh), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      headers: { Authorization: 'Bearer ' + await user.getIdToken(refresh),
+        ...(path === 'session' || !LMS.DB.sqlDataset ? {} : { 'X-Library-Dataset': LMS.DB.sqlDataset }),
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
     let response = await send(false);
@@ -24,12 +26,14 @@ LMS.SqlApi = {
         SIGN_IN_REQUIRED: 'Sign in with Google.', INVALID_SESSION: 'Please sign in again.',
         ADMIN_ACCESS_REQUIRED: 'This Google account does not have library access.',
         RECORD_CHANGED: 'Cloud changed this record. Review before overwriting.',
+        DATASET_CHANGED: 'The library backup has been replaced. Close old tabs, refresh and sign in again. Previous pending edits are retained separately.',
         ROLL_ALREADY_EXISTS: 'This roll number is already assigned to another student.',
         SEAT_CONFLICT: 'This seat or shift is no longer available. Choose another seat or shift.',
         READ_ONLY_PREVIEW: 'SQL migration is still in preview. Editing is not enabled.',
         ORIGIN_NOT_ALLOWED: 'This website has not been enabled for SQL access.'
       };
       const error = new Error(messages[result.error] || ('SQL save could not finish (' + (result.error || response.status) + '). Pending changes remain on this device.'));
+      if (result.error === 'DATASET_CHANGED') { LMS.DB.sqlAuthorized = false; LMS.Auth.endSession(); LMS.DB.notify('auth'); }
       error.code = result.error; error.status = response.status; throw error;
     }
     // Ignore a response if sign-out/account switching happened while it was in flight.

@@ -32,15 +32,17 @@
     this.switching = true; this.notify('status');
     this.userId = user?.uid || null; this.connected = false; this.authResolved = true; this.sqlAuthorized = false;
     try {
-      await originalOpenScope(user ? 'sql:' + user.uid : 'sql:signed-out');
       if (user) {
-        await LMS.SqlApi.request('session');
+        const session = await LMS.SqlApi.request('session');
+        if (!/^[a-z][a-z0-9_]{0,62}$/.test(session.dataset || '')) throw new Error('SQL update is in progress. Please refresh shortly.');
+        this.sqlDataset = session.dataset;
+        await originalOpenScope('sql:' + user.uid + ':' + session.dataset);
         if (this.localLoad('_sqlInitialized', false)) await this.pullSqlChanges();
         else await this.syncCloudToLocal();
         this.sqlAuthorized = true;
         this.connected = true;
         poll = setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine) this.pullSqlChanges().catch(error => this.fail(error)); }, 60000);
-      }
+      } else { this.sqlDataset = null; await originalOpenScope('sql:signed-out'); }
     } catch (error) { this.fail(error); LMS.Auth?.endSession(); throw error; }
     finally { this.switching = false; this.notify('scope'); this.notify('auth'); }
     if (user) this.processOfflineQueue();
