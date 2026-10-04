@@ -18,6 +18,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
     note: payment?.note || '',
     photo: payment?.photo || '',
     date: payment?.date || LMS.today(),
+    time: payment ? LMS.paymentTime(payment) : LMS.currentTimeIST(),
   });
 
   // Sync form when payment prop changes
@@ -32,6 +33,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
         note: payment.note || '',
         photo: payment.photo || '',
         date: payment.date,
+        time: LMS.paymentTime(payment),
       });
       setCustomTotal(payment.amount);
       setIsCustomAmount(true); // Default to custom/exact amount for edits to avoid recalc issues
@@ -56,7 +58,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
   }, [form.amount, form.months, form.discount, isCustomAmount]);
 
   const handleSave = () => {
-    const error = LMS.validatePayment(form, calculatedTotal);
+    const error = LMS.validatePayment(form, calculatedTotal) || (form.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time) ? 'Enter a valid payment time.' : '');
     if (error) { showToast(error, 'error'); return; }
 
     if (isEdit) {
@@ -98,6 +100,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
       <${Select} label="Method" value=${form.method} onChange=${e => setForm(p => ({ ...p, method: e.target.value }))} options=${[{ value: 'cash', label: 'Cash' }, { value: 'online', label: 'Online' }]} />
     </div>
     <${Input} label="Date" type="date" max="2099-12-31" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
+    <${Input} label="Payment time (IST)" type="time" value=${form.time} onChange=${e => setForm(p => ({ ...p, time: e.target.value }))} />
     <${Input} label="Note" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} placeholder="Optional note..." />
     
     <div>
@@ -145,7 +148,7 @@ LMS.PaymentManagement = () => {
   const { Button, Card, Modal, Input, Select, SearchBar, Icons, ImageViewer } = LMS;
 
   const [form, setForm] = useState({
-    studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today(),
+    studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today(), time: LMS.currentTimeIST(),
   });
   const [page, setPage] = useState(1);
 
@@ -164,7 +167,7 @@ LMS.PaymentManagement = () => {
   const calculatedTotal = (form.amount * form.months) - form.discount;
 
   const handleSave = () => {
-    const error = LMS.validatePayment(form, calculatedTotal);
+    const error = LMS.validatePayment(form, calculatedTotal) || (form.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(form.time) ? 'Enter a valid payment time.' : '');
     if (error) { showToast(error, 'error'); return; }
     const person = students.find(s => s.id === form.studentId);
     const payment = { ...editPayment, ...form, discount: Number(form.discount), months: Number(form.months), amount: Math.round(Number(calculatedTotal) * 100) / 100, studentName: person?.name || editPayment?.studentName || 'Archived student', rollNo: person?.rollNo || editPayment?.rollNo || '', ...(person?.billingEpoch ? { billingEpoch: person.billingEpoch } : {}), id: editPayment?.id || LMS.generateId() };
@@ -196,7 +199,7 @@ LMS.PaymentManagement = () => {
   };
 
   const resetForm = () => {
-    setForm({ studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today() });
+    setForm({ studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today(), time: LMS.currentTimeIST() });
     setSelectedStudent('');
     setEditPayment(null);
     setShowForm(false);
@@ -219,7 +222,7 @@ LMS.PaymentManagement = () => {
   return html`<div class="payments-workspace">
     <div class="payments-page-heading">
       <h1>Payments</h1>
-      <${Button} size="sm" onClick=${() => setShowForm(true)}><${Icons.Add} /> Add Payment</${Button}>
+      <${Button} size="sm" onClick=${() => { setForm(p => ({ ...p, date: LMS.today(), time: LMS.currentTimeIST() })); setShowForm(true); }}><${Icons.Add} /> Add Payment</${Button}>
     </div>
 
     <div class="payments-toolbar">
@@ -247,7 +250,7 @@ LMS.PaymentManagement = () => {
               ${payment.note && html`<p class="payments-note">${payment.note}</p>`}
             </td>
             <td class="payments-date-cell">
-              <span>${LMS.formatDate(payment.date)}</span>
+              <span>${LMS.formatPaymentDate(payment)}</span>
               <small>${payment.months} month(s)${payment.discount > 0 ? ' · Discount: ' + LMS.formatCurrency(payment.discount) : ''}</small>
             </td>
             <td class="payments-method-cell"><span class="payments-method-badge ${payment.method === 'cash' ? 'is-cash' : 'is-online'}">${payment.method}</span></td>
@@ -266,6 +269,7 @@ LMS.PaymentManagement = () => {
                   note: payment.note || '',
                   photo: payment.photo || '',
                   date: payment.date || LMS.today(),
+                  time: LMS.paymentTime(payment),
                 }); 
                 setSelectedStudent(payment.studentId); 
                 setShowForm(true); 
@@ -292,6 +296,7 @@ LMS.PaymentManagement = () => {
           <${Select} label="Method" value=${form.method} onChange=${e => setForm(p => ({ ...p, method: e.target.value }))} options=${[{ value: 'cash', label: 'Cash' }, { value: 'online', label: 'Online' }]} />
         </div>
         <${Input} label="Date" type="date" max="2099-12-31" value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} />
+        <${Input} label="Payment time (IST)" type="time" value=${form.time} onChange=${e => setForm(p => ({ ...p, time: e.target.value }))} />
         <${Input} label="Note" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} placeholder="Optional note..." />
         <div>
           <label class="input-label">Receipt Photo</label>

@@ -10,6 +10,26 @@ LMS.formatDate = (date) => {
 
 LMS.formatCurrency = (amount) => '₹' + Number(amount || 0).toLocaleString('en-IN');
 
+LMS.currentTimeIST = () => new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+}).format(new Date());
+LMS.paymentTime = payment => {
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(payment?.time || '')) return payment.time;
+  // A date-only legacy receipt has no known payment time. Edit/sync timestamps
+  // describe a different event and must never be presented as payment time.
+  if (/T\d{2}:\d{2}/.test(payment?.date || '') && Number.isFinite(+new Date(payment.date))) {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(payment.date));
+  }
+  return '';
+};
+LMS.formatPaymentDate = payment => {
+  const date = payment?.date ? new Date(payment.date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+  const time = LMS.paymentTime(payment);
+  if (!time) return date;
+  const [hours, minutes] = time.split(':').map(Number);
+  return date + ' · ' + (hours % 12 || 12) + ':' + String(minutes).padStart(2, '0') + (hours < 12 ? ' AM' : ' PM');
+};
+
 // Record storage/import order is not chronological. Sort a copy before limiting it.
 LMS.latestActivity = (logs, limit) => Object.values(logs || {})
   .filter(log => log && typeof log === 'object')

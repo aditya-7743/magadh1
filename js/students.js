@@ -473,7 +473,7 @@ LMS.StudentCard = ({ student, payments, shifts, halls, settings, onView, onViewP
         ${studentPayments.length ? studentPayments.map(p => html`
           <div class="payment-preview-row" key=${p.id}>
             <span class="receipt-symbol" aria-hidden="true"><${LMS.Icons.Payments} /></span>
-            <div class="payment-preview-info"><strong>${LMS.formatCurrency(p.amount)}</strong><small>${LMS.formatDate(p.date)}${p.archived ? ' · Archived' : ''}</small></div>
+            <div class="payment-preview-info"><strong>${LMS.formatCurrency(p.amount)}</strong><small>${LMS.formatPaymentDate(p)}${p.archived ? ' · Archived' : ''}</small></div>
             <span class="payment-method">${p.method || 'Payment'}</span>
             <div class="payment-preview-actions"><button type="button" class="icon-button" onClick=${() => onEditPayment?.(p)} aria-label=${'Edit payment of ' + LMS.formatCurrency(p.amount) + ' on ' + LMS.formatDate(p.date)} title="Edit payment"><${LMS.Icons.Edit} /></button><button type="button" class="icon-button payment-delete" onClick=${LMS.safeAction(e => handleDeletePayment(e, p))} aria-label=${'Delete payment of ' + LMS.formatCurrency(p.amount) + ' on ' + LMS.formatDate(p.date)} title="Delete payment"><${LMS.Icons.Delete} /></button></div>
           </div>`)
@@ -511,7 +511,7 @@ LMS.StudentPaymentHistory = ({ student, onEditPayment, onViewReceipt, compact = 
     <div class="payment-history-list">
       ${history.length ? history.map(p => html`<div class="payment-history-entry" key=${p.id}>
         <div class="payment-history-info"><strong>${LMS.formatCurrency(p.amount)}</strong><span class="payment-method">${p.method || 'Payment'}</span>${(p.archived || p.voided) && html`<span class="status-pill inactive">${p.voided ? 'Voided' : 'Archived'}</span>`}</div>
-        <div class="payment-history-date"><time>${LMS.formatDate(p.date)}</time><small>${[p.months ? p.months + ' month(s)' : '', Number(p.discount) > 0 ? 'Discount ' + LMS.formatCurrency(p.discount) : '', p.note || p.remarks || ''].filter(Boolean).join(' · ')}</small></div>
+        <div class="payment-history-date"><time>${LMS.formatPaymentDate(p)}</time><small>${[p.months ? p.months + ' month(s)' : '', Number(p.discount) > 0 ? 'Discount ' + LMS.formatCurrency(p.discount) : '', p.note || p.remarks || ''].filter(Boolean).join(' · ')}</small></div>
         <div class="payment-history-actions">${p.photo && html`<${LMS.Button} variant="secondary" size="sm" onClick=${() => onViewReceipt?.(p.photo)} title="View receipt" aria-label=${'View receipt on ' + LMS.formatDate(p.date)}><${LMS.Icons.Log} /></${LMS.Button}>`}<${LMS.Button} variant="secondary" size="sm" onClick=${() => onEditPayment?.(p)} title="Edit payment" aria-label=${'Edit payment on ' + LMS.formatDate(p.date)}><${LMS.Icons.Edit} /></${LMS.Button}><${LMS.Button} variant="ghost" size="sm" className="payment-delete" onClick=${() => deletePayment(p)} title="Delete payment" aria-label=${'Delete payment on ' + LMS.formatDate(p.date)}><${LMS.Icons.Delete} /></${LMS.Button}></div>
       </div>`) : html`<p class="payment-preview-empty">No payment history found.</p>`}
     </div>
@@ -613,7 +613,8 @@ LMS.StudentDetailView = ({ student, onReleaseSeat, onClose, onEdit, onUpdate, cl
         ...(student.billingEpoch ? { billingEpoch: student.billingEpoch } : {}),
         amount: 0,
         discount: Number(student.monthlyFee),
-        date: new Date().toISOString(),
+        date: LMS.today(),
+        time: LMS.currentTimeIST(),
         method: 'waiver',
         remarks: 'Fee Waived (Skip Month)'
       };
