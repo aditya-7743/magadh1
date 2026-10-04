@@ -20,17 +20,16 @@ LMS.Chatbot = () => {
         // Statistics
         if (lower === 'stats' || lower === 'statistics') {
             const active = students.filter(s => s.isActive).length;
-            const totalSeats = halls.reduce((a, h) => a + h.seatCount, 0);
-            const occupied = students.filter(s => s.assignedSeat && s.isActive).length;
+            const { reservableSeats: totalSeats, reservedSeats: occupied, availableSeats } = LMS.seatReservationStats(halls, students, shifts);
             const dueCount = students.filter(s => s.isActive && LMS.getDueAmount(s, payments) > 0).length;
-            return `📊 **Statistics:**\n• Active Students: ${active}\n• Total Seats: ${totalSeats}\n• Occupied: ${occupied}\n• Available: ${totalSeats - occupied}\n• Students with Dues: ${dueCount}`;
+            return `📊 **Statistics:**\n• Active Students: ${active}\n• Reservable Seats: ${totalSeats}\n• Reserved: ${occupied}\n• Available: ${availableSeats}\n• Students with Dues: ${dueCount}`;
         }
 
         // List all students
         if (lower === 'list' || lower === 'all') {
             const active = students.filter(s => s.isActive).slice(0, 15);
             if (active.length === 0) return 'No active students found.';
-            return `📋 **Active Students (${active.length}):**\n` + active.map(s => `• ${s.rollNo} - ${s.name}`).join('\n');
+            return `📋 **Active Students (showing ${active.length} of ${students.filter(s => s.isActive).length}):**\n` + active.map(s => `• ${s.rollNo} - ${s.name}`).join('\n');
         }
 
         // Show dues
@@ -53,15 +52,15 @@ LMS.Chatbot = () => {
         if (lower.startsWith('search ')) {
             const query = lower.replace('search ', '').trim();
             const results = students.filter(s =>
-                s.name.toLowerCase().includes(query) ||
-                s.rollNo.toLowerCase().includes(query)
+                String(s.name || '').toLowerCase().includes(query) ||
+                String(s.rollNo || '').toLowerCase().includes(query)
             ).slice(0, 10);
             if (results.length === 0) return `No students found for "${query}"`;
             return `🔍 **Search Results:**\n` + results.map(s => `• ${s.rollNo} - ${s.name} (${s.isActive ? 'Active' : 'Inactive'})`).join('\n');
         }
 
         // Student by roll number
-        const student = students.find(s => s.rollNo.toLowerCase() === lower);
+        const student = students.find(s => String(s.rollNo || '').toLowerCase() === lower);
         if (student) {
             const fin = LMS.calculateStudentFinancials(student, payments);
             const shift = shifts.find(sh => sh.id === student.shift);

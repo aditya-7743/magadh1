@@ -11,13 +11,13 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
   // Initialize form state
   const [form, setForm] = useState({
     studentId: student?.id || payment?.studentId || '',
-    amount: payment ? Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)) : (Number(student?.monthlyFee) || 600),
+    amount: payment ? ((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)) : (Number(student?.monthlyFee) || 600),
     months: payment?.months || 1,
     discount: payment?.discount || 0,
     method: payment?.method || 'cash',
     note: payment?.note || '',
     photo: payment?.photo || '',
-    date: payment?.date || new Date().toISOString().split('T')[0],
+    date: payment?.date || LMS.today(),
   });
 
   // Sync form when payment prop changes
@@ -25,7 +25,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
     if (payment) {
       setForm({
         studentId: payment.studentId,
-        amount: Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)),
+        amount: ((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)),
         months: payment.months || 1,
         discount: payment.discount || 0,
         method: payment.method || 'cash',
@@ -56,26 +56,23 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
   }, [form.amount, form.months, form.discount, isCustomAmount]);
 
   const handleSave = () => {
-    if (!form.studentId || !form.amount) { showToast('Amount required!', 'error'); return; }
+    const error = LMS.validatePayment(form, calculatedTotal);
+    if (error) { showToast(error, 'error'); return; }
 
     if (isEdit) {
       // Update existing payment
-      const updatedPayment = { ...payment, ...form, amount: Number(calculatedTotal) };
+      const updatedPayment = { ...payment, ...form, discount: Number(form.discount), months: Number(form.months), amount: Math.round(Number(calculatedTotal) * 100) / 100 };
       setPayments(prev => prev.map(p => p.id === payment.id ? updatedPayment : p));
 
-      // Cloud Sync
-      if (LMS.DB.saveItem) LMS.DB.saveItem('payments', updatedPayment);
 
       addLog(`Updated payment ₹${form.amount} for ${student?.name}`);
       showToast('Payment updated successfully!', 'success');
     } else {
       // Add new payment
       // Adjust date to match input if needed, but ISO string is fine for ID usually
-      const newPayment = { ...form, amount: Number(calculatedTotal), id: LMS.generateId() };
+      const newPayment = { ...form, discount: Number(form.discount), months: Number(form.months), amount: Math.round(Number(calculatedTotal) * 100) / 100, ...(student?.billingEpoch ? { billingEpoch: student.billingEpoch } : {}), studentName: student?.name || '', rollNo: student?.rollNo || '', id: LMS.generateId() };
       setPayments(prev => [...prev, newPayment]);
 
-      // Cloud Sync
-      if (LMS.DB.saveItem) LMS.DB.saveItem('payments', newPayment);
 
       addLog(`Added payment ₹${calculatedTotal} for ${student?.name}`);
       showToast('Payment added successfully!', 'success');
@@ -85,10 +82,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
 
   return html`<div class="space-y-4">
     <div class="flex items-center gap-3 mb-4">
-      ${student?.photo
-      ? html`<img src=${student.photo} class="w-12 h-12 rounded-full object-cover" />`
-      : html`<div class="w-12 h-12 rounded-full bg-pink-100 flex items-center justify-center font-bold text-xl text-pink-700">${(student?.name || '?').charAt(0).toUpperCase()}</div>`
-    }
+      <${LMS.StudentPhoto} student=${student} size="lg" />
       <div>
         <p class="font-bold">${student?.name}</p>
         <p class="text-sm text-gray-500">Roll: ${student?.rollNo} • Fee: ₹${student?.monthlyFee}/mo</p>
@@ -110,7 +104,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
       <label class="input-label">Receipt Photo (optional)</label>
       <label class="upload-area" style=${{ height: '5rem' }}>
         ${form.photo ? html`<img src=${form.photo} alt="Receipt" style=${{ height: '100%', objectFit: 'contain', borderRadius: '0.25rem' }} />` : html`<span class="text-gray-400">📷 Upload Receipt</span>`}
-        <input type="file" accept="image/*" onChange=${handleImageUpload} />
+        <input type="file" accept="image/*" onChange=${LMS.safeAction(handleImageUpload)} />
       </label>
     </div>
     
@@ -142,7 +136,7 @@ LMS.PaymentForm = ({ student, payment, onClose }) => {
 };
 
 LMS.PaymentManagement = () => {
-  const { students, payments, setPayments, addLog, showToast, settings } = useContext(LMS.AppContext);
+  const { students, payments, setPayments, addLog, showToast, settings, openStudent } = useContext(LMS.AppContext);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editPayment, setEditPayment] = useState(null);
@@ -151,15 +145,16 @@ LMS.PaymentManagement = () => {
   const { Button, Card, Modal, Input, Select, SearchBar, Icons, ImageViewer } = LMS;
 
   const [form, setForm] = useState({
-    studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: new Date().toISOString().split('T')[0],
+    studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today(),
   });
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    if (selectedStudent) {
+    if (selectedStudent && !editPayment) {
       const s = students.find(x => x.id === selectedStudent);
       if (s) setForm(prev => ({ ...prev, studentId: selectedStudent, amount: s.monthlyFee }));
     }
-  }, [selectedStudent, students]);
+  }, [selectedStudent, editPayment]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -169,21 +164,19 @@ LMS.PaymentManagement = () => {
   const calculatedTotal = (form.amount * form.months) - form.discount;
 
   const handleSave = () => {
-    if (!form.studentId || !form.amount) return;
-    const payment = { ...form, amount: calculatedTotal, id: editPayment?.id || LMS.generateId() };
+    const error = LMS.validatePayment(form, calculatedTotal);
+    if (error) { showToast(error, 'error'); return; }
+    const person = students.find(s => s.id === form.studentId);
+    const payment = { ...editPayment, ...form, discount: Number(form.discount), months: Number(form.months), amount: Math.round(Number(calculatedTotal) * 100) / 100, studentName: person?.name || editPayment?.studentName || 'Archived student', rollNo: person?.rollNo || editPayment?.rollNo || '', ...(person?.billingEpoch ? { billingEpoch: person.billingEpoch } : {}), id: editPayment?.id || LMS.generateId() };
     if (editPayment) {
       setPayments(prev => prev.map(p => p.id === payment.id ? payment : p));
 
-      // Cloud Sync
-      if (LMS.DB.saveItem) LMS.DB.saveItem('payments', payment);
 
       addLog('Updated payment');
       showToast('Payment updated!', 'success');
     } else {
       setPayments(prev => [...prev, payment]);
 
-      // Cloud Sync
-      if (LMS.DB.saveItem) LMS.DB.saveItem('payments', payment);
 
       addLog('Added payment: ' + LMS.formatCurrency(calculatedTotal));
       showToast('Payment added!', 'success');
@@ -191,12 +184,11 @@ LMS.PaymentManagement = () => {
     resetForm();
   };
 
-  const handleDelete = (p) => {
+  const handleDelete = async (p) => {
+    if (!await LMS.Auth.confirmAction()) { showToast('Authentication failed', 'error'); return; }
     if (confirm('Delete this payment?')) {
       setPayments(prev => prev.filter(x => x.id !== p.id));
 
-      // Cloud Sync
-      if (LMS.DB.removeItem) LMS.DB.removeItem('payments', p.id);
 
       addLog('Deleted payment');
       showToast('Payment deleted!', 'success');
@@ -204,79 +196,93 @@ LMS.PaymentManagement = () => {
   };
 
   const resetForm = () => {
-    setForm({ studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: new Date().toISOString().split('T')[0] });
+    setForm({ studentId: '', amount: 0, months: 1, discount: 0, method: 'cash', note: '', photo: '', date: LMS.today() });
     setSelectedStudent('');
     setEditPayment(null);
     setShowForm(false);
   };
 
   const sendWhatsApp = (student, dueAmount) => {
-    const msg = settings.whatsappTemplate
-      .replace('{name}', student.name).replace('{roll}', student.rollNo)
-      .replace('{due}', dueAmount).replace('{dueDate}', LMS.formatDate(LMS.getPaidUntilDate(student, payments)));
+    const msg = LMS.formatMessage(settings.whatsappTemplate, student, settings, payments);
     window.open('https://wa.me/91' + student.mobile + '?text=' + encodeURIComponent(msg), '_blank');
   };
 
-  const filtered = payments.filter(p => {
-    const s = students.find(x => x.id === p.studentId);
-    return s?.name?.toLowerCase().includes(search.toLowerCase()) || s?.rollNo?.toLowerCase().includes(search.toLowerCase());
-  }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const studentById = useMemo(() => new Map(students.map(student => [student.id, student])), [students]);
+  const filtered = useMemo(() => payments.filter(p => {
+    const s = studentById.get(p.studentId);
+    return !search || String(s?.name || p.studentName || '').toLowerCase().includes(search.toLowerCase()) || String(s?.rollNo || p.rollNo || '').toLowerCase().includes(search.toLowerCase());
+  }).sort((a, b) => new Date(b.date) - new Date(a.date)), [payments, studentById, search]);
+  const lastPage = Math.max(1, Math.ceil(filtered.length / 40));
+  const visiblePage = Math.min(page, lastPage);
+  useEffect(() => setPage(1), [search]);
 
-  return html`<div class="space-y-4">
-    <div class="flex justify-between items-center">
-      <h1 class="text-2xl font-bold">Payments</h1>
-      <${Button} onClick=${() => setShowForm(true)}><${Icons.Add} /> Add Payment</${Button}>
+  return html`<div class="payments-workspace">
+    <div class="payments-page-heading">
+      <h1>Payments</h1>
+      <${Button} size="sm" onClick=${() => setShowForm(true)}><${Icons.Add} /> Add Payment</${Button}>
     </div>
 
-    <${SearchBar} value=${search} onChange=${e => setSearch(e.target.value)} placeholder="Search payments..." />
+    <div class="payments-toolbar">
+      <div class="payments-search"><${SearchBar} value=${search} onChange=${e => setSearch(e.target.value)} placeholder="Search by student name or roll..." /></div>
 
-    <div class="space-y-3">
-      ${filtered.map(payment => {
-    const student = students.find(s => s.id === payment.studentId);
-    return html`<${Card} key=${payment.id}>
-          <div class="flex gap-3" style=${{ flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div class="flex-1" style=${{ minWidth: '200px' }}>
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-semibold">${student?.name || 'Unknown'}</span>
-                <span class="mono text-sm text-slate-400">${student?.rollNo}</span>
-                <span class="badge ${payment.method === 'cash' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}">${payment.method}</span>
+    <div class="payments-pagination">
+      <${Button} size="sm" variant="secondary" disabled=${visiblePage <= 1} onClick=${() => setPage(visiblePage - 1)}>Previous</${Button}>
+      <span>${filtered.length ? (visiblePage - 1) * 40 + 1 : 0}–${Math.min(visiblePage * 40, filtered.length)} / ${filtered.length}</span>
+      <${Button} size="sm" variant="secondary" disabled=${visiblePage >= lastPage} onClick=${() => setPage(visiblePage + 1)}>Next</${Button}>
+    </div>
+    </div>
+
+    <div class="payments-ledger">
+      <table class="payments-table" aria-label="Payments">
+        <thead><tr><th scope="col">Student</th><th scope="col" class="payments-date-cell">Date / duration</th><th scope="col" class="payments-method-cell">Method</th><th scope="col" class="payments-amount-cell">Amount</th><th scope="col" class="payments-actions-cell">Actions</th></tr></thead>
+        <tbody>
+      ${filtered.slice((visiblePage - 1) * 40, visiblePage * 40).map(payment => {
+    const student = studentById.get(payment.studentId);
+    return html`<tr key=${payment.id} class=${student ? 'student-open-target' : ''} tabIndex=${student ? 0 : undefined} onClick=${event => student && LMS.studentCardClick(event, student, openStudent)} onKeyDown=${event => student && LMS.studentCardKeyDown(event, student, openStudent)}>
+            <td class="payments-student-cell">
+              <div class="payments-student-name">
+                <span class="payments-roll"># ${student?.rollNo || payment.rollNo || '—'}</span>
+                <strong>${student?.name || payment.studentName || 'Archived student'}</strong>
               </div>
-              <div class="text-sm text-slate-400">
-                ${LMS.formatDate(payment.date)} • ${payment.months} month(s) ${payment.discount > 0 ? '• Discount: ' + LMS.formatCurrency(payment.discount) : ''}
-              </div>
-              ${payment.note && html`<p class="text-sm text-slate-500 mt-1">${payment.note}</p>`}
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="text-xl font-bold text-emerald-600">${LMS.formatCurrency(payment.amount)}</span>
-              ${payment.photo && html`<button class="btn btn-ghost btn-sm" onClick=${() => setViewImage(payment.photo)}><${Icons.Eye} /></button>`}
-              ${student?.mobile && html`<button class="btn btn-ghost btn-sm text-green-400" onClick=${() => sendWhatsApp(student, LMS.getDueAmount(student, payments))}><${Icons.WhatsApp} /></button>`}
-              <${Button} size="sm" variant="ghost" onClick=${() => { 
+              ${payment.note && html`<p class="payments-note">${payment.note}</p>`}
+            </td>
+            <td class="payments-date-cell">
+              <span>${LMS.formatDate(payment.date)}</span>
+              <small>${payment.months} month(s)${payment.discount > 0 ? ' · Discount: ' + LMS.formatCurrency(payment.discount) : ''}</small>
+            </td>
+            <td class="payments-method-cell"><span class="payments-method-badge ${payment.method === 'cash' ? 'is-cash' : 'is-online'}">${payment.method}</span></td>
+            <td class="payments-amount-cell"><strong>${LMS.formatCurrency(payment.amount)}</strong></td>
+            <td class="payments-actions-cell"><div class="payments-row-actions">
+              ${payment.photo && html`<button class="btn btn-ghost btn-sm" title="View receipt" aria-label="View receipt" onClick=${() => setViewImage(payment.photo)}><${Icons.Eye} /></button>`}
+              ${student?.mobile && html`<button class="btn btn-ghost btn-sm payments-whatsapp" title="WhatsApp reminder" aria-label="WhatsApp reminder" onClick=${() => sendWhatsApp(student, LMS.getDueAmount(student, payments))}><${Icons.WhatsApp} /></button>`}
+              <${Button} size="sm" variant="ghost" title="Edit payment" aria-label="Edit payment" onClick=${() => { 
                 setEditPayment(payment); 
                 setForm({
                   studentId: payment.studentId,
-                  amount: Math.round((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)),
+                  amount: ((Number(payment.amount) + (Number(payment.discount) || 0)) / (Number(payment.months) || 1)),
                   months: payment.months || 1,
                   discount: payment.discount || 0,
                   method: payment.method || 'cash',
                   note: payment.note || '',
                   photo: payment.photo || '',
-                  date: payment.date || new Date().toISOString().split('T')[0],
+                  date: payment.date || LMS.today(),
                 }); 
                 setSelectedStudent(payment.studentId); 
                 setShowForm(true); 
               }}><${Icons.Edit} /></${Button}>
-              <${Button} size="sm" variant="ghost" className="text-red-400" onClick=${() => handleDelete(payment)}><${Icons.Delete} /></${Button}>
-            </div>
-          </div>
-        </${Card}>`;
+              <${Button} size="sm" variant="ghost" className="payments-delete" title="Delete payment" aria-label="Delete payment" onClick=${() => handleDelete(payment)}><${Icons.Delete} /></${Button}>
+            </div></td>
+        </tr>`;
   })}
-      ${filtered.length === 0 && html`<${Card} className="text-center py-8 text-slate-400">No payments found</${Card}>`}
+      ${filtered.length === 0 && html`<tr class="payments-empty-row"><td colspan="5">No payments found</td></tr>`}
+        </tbody>
+      </table>
     </div>
 
     <${Modal} isOpen=${showForm} onClose=${resetForm} title=${editPayment ? 'Edit Payment' : 'Add Payment'}>
       <div class="space-y-4">
         <${Select} label="Student *" value=${selectedStudent} onChange=${e => setSelectedStudent(e.target.value)}
-          options=${[{ value: '', label: 'Select Student' }, ...students.filter(s => s.isActive).map(s => ({ value: s.id, label: s.rollNo + ' - ' + s.name }))]} />
+          options=${[{ value: '', label: 'Select Student' }, ...students.filter(s => s.isActive || s.id === selectedStudent).map(s => ({ value: s.id, label: s.rollNo + ' - ' + s.name }))]} />
         <div class="grid grid-2 gap-4">
           <${Input} label="Amount per Month (₹)" type="number" value=${form.amount} onChange=${e => setForm(p => ({ ...p, amount: Number(e.target.value) }))} />
           <${Input} label="Months" type="number" value=${form.months} onChange=${e => setForm(p => ({ ...p, months: Number(e.target.value) }))} min="1" />
@@ -291,7 +297,7 @@ LMS.PaymentManagement = () => {
           <label class="input-label">Receipt Photo</label>
           <label class="upload-area" style=${{ height: '6rem' }}>
             ${form.photo ? html`<img src=${form.photo} alt="Receipt" style=${{ height: '100%', objectFit: 'contain', borderRadius: '0.25rem' }} />` : html`<span class="text-slate-400">Upload Receipt</span>`}
-            <input type="file" accept="image/*" onChange=${handleImageUpload} />
+            <input type="file" accept="image/*" onChange=${LMS.safeAction(handleImageUpload)} />
           </label>
         </div>
         <div class="card p-3">

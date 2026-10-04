@@ -2,7 +2,7 @@
 window.LMS = window.LMS || {};
 
 LMS.Accounts = () => {
-  const { payments, students, halls, settings, showToast, expenses, setExpenses, addLog } = useContext(LMS.AppContext);
+  const { payments, students, setStudents, halls, settings, showToast, expenses, setExpenses, addLog, openStudent } = useContext(LMS.AppContext);
   const [showToday, setShowToday] = useState(true);
   const [showMonth, setShowMonth] = useState(false);
   const [showYear, setShowYear] = useState(false);
@@ -11,7 +11,7 @@ LMS.Accounts = () => {
 
   // Expenses & Analytics State
   const [analyticsMode, setAnalyticsMode] = useState('thisMonth'); // 'thisMonth', 'last3', 'last6', 'year', 'month'
-  const [analyticsDate, setAnalyticsDate] = useState(new Date().toISOString().split('T')[0]);
+  const [analyticsDate, setAnalyticsDate] = useState(LMS.today());
 
   // Chart data computation (replaces window._tempChartData hack)
   const chartComputed = useMemo(() => {
@@ -26,17 +26,17 @@ LMS.Accounts = () => {
       }
     } else if (analyticsMode === 'last3') {
       for (let i = 2; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
         dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
       }
     } else if (analyticsMode === 'last6') {
       for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
         dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
       }
     } else if (analyticsMode === 'last12') {
       for (let i = 11; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
         dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
       }
     } else if (analyticsMode === 'year') {
@@ -69,9 +69,13 @@ LMS.Accounts = () => {
     return { data: chartData, max: maxVal };
   }, [analyticsMode, analyticsDate, payments, expenses]);
 
-  const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: new Date().toISOString().split('T')[0] });
+  const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: LMS.today() });
   const [paymentModal, setPaymentModal] = useState({ open: false, student: null });
+  const [deactivateStudentId, setDeactivateStudentId] = useState(null);
+  const [deactivatePassword, setDeactivatePassword] = useState('');
+  const [deactivateError, setDeactivateError] = useState('');
   const [duesFilter, setDuesFilter] = useState({
+    includeInactive: false,
     search: '',
     minAmount: '',
     maxAmount: '',
@@ -80,27 +84,50 @@ LMS.Accounts = () => {
     sortOrder: 'asc'
   });
 
-  const { Button, Card, Modal, Input, Icons, PasswordModal } = LMS;
+  const { Button, Card, Modal, Input, Icons } = LMS;
+
+  const deactivateStudent = students.find(student => student.id === deactivateStudentId);
+  const closeDeactivate = () => {
+    setDeactivateStudentId(null);
+    setDeactivatePassword('');
+    setDeactivateError('');
+  };
+  const handleDeactivate = (event) => {
+    event.preventDefault();
+    if (LMS.DB.switching) return;
+    if (deactivatePassword !== '123') {
+      setDeactivateError('Incorrect password. Please try again.');
+      return;
+    }
+    if (!deactivateStudent || deactivateStudent._deleted || deactivateStudent.isActive === false) {
+      closeDeactivate();
+      showToast('This student is no longer active.', 'error');
+      return;
+    }
+    // Apply the existing inactivity rule to the saved record, not the dues row's derived fields.
+    setStudents(prev => prev.map(student => student.id === deactivateStudentId && student.isActive !== false && !student._deleted ? LMS.setStudentActive(student, false) : student));
+    addLog('Deactivated student: ' + deactivateStudent.name + ' (from Dues List)');
+    closeDeactivate();
+    showToast('Student deactivated & seat released. Previous dues are retained.', 'success');
+  };
 
   // --- EXPENSE HANDLERS ---
   const handleAddExpense = (e) => {
     e.preventDefault();
-    if (!expenseForm.amount || !expenseForm.note) { showToast('Please fill details', 'error'); return; }
+    if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0 || !expenseForm.note.trim() || !LMS.validDate(expenseForm.date)) { showToast('Please fill details', 'error'); return; }
 
     const newExpense = {
       id: LMS.generateId(),
       amount: Number(expenseForm.amount),
       note: expenseForm.note,
-      date: new Date(expenseForm.date).toISOString()
+      date: expenseForm.date
     };
 
     setExpenses(prev => [newExpense, ...prev]);
 
-    // Cloud Sync
-    if (LMS.DB.saveItem) LMS.DB.saveItem('expenses', newExpense);
 
     addLog(`Added expense: ₹${expenseForm.amount} (${expenseForm.note})`);
-    setExpenseForm({ amount: '', note: '', date: new Date().toISOString().split('T')[0] });
+    setExpenseForm({ amount: '', note: '', date: LMS.today() });
     showToast('Expense added!', 'success');
   };
   const handleDeleteExpense = (id) => {
@@ -108,8 +135,6 @@ LMS.Accounts = () => {
       const exp = expenses.find(e => e.id === id);
       setExpenses(prev => prev.filter(e => e.id !== id));
 
-      // Cloud Sync
-      if (LMS.DB.removeItem) LMS.DB.removeItem('expenses', id);
 
       addLog(`Deleted expense: ₹${exp?.amount || '?'} (${exp?.note || 'unknown'})`);
       showToast('Expense deleted', 'success');
@@ -127,9 +152,9 @@ LMS.Accounts = () => {
   const yearPayments = payments.filter(p => new Date(p.date).getFullYear() === thisYear);
 
   const calc = (list) => ({
-    total: list.reduce((a, p) => a + (p.amount || 0), 0),
-    cash: list.filter(p => p.method === 'cash').reduce((a, p) => a + (p.amount || 0), 0),
-    online: list.filter(p => p.method === 'online').reduce((a, p) => a + (p.amount || 0), 0),
+    total: list.reduce((a, p) => a + (Number(p.amount) || 0), 0),
+    cash: list.filter(p => p.method === 'cash').reduce((a, p) => a + (Number(p.amount) || 0), 0),
+    online: list.filter(p => p.method === 'online').reduce((a, p) => a + (Number(p.amount) || 0), 0),
     count: list.length,
     breakdown: list.length > 0 ? (() => {
       const months = {};
@@ -148,17 +173,17 @@ LMS.Accounts = () => {
 
   // Get all due students with financials
   const dueStudentsList = useMemo(() => {
-    return students.filter(s => s.isActive && LMS.getDueAmount(s, payments) > 0)
+    return students.filter(s => LMS.getDueAmount(s, payments) > 0)
       .map(s => {
         const fin = LMS.calculateStudentFinancials(s, payments);
         const seatLabel = s.assignedSeat ? LMS.formatSeatLabel(s.assignedSeat, halls) : null;
         return { ...s, totalDues: fin.totalDues, paidUntil: fin.paidUntil, dueSince: fin.dueSince, daysDue: fin.daysDue, seatLabel };
       });
-  }, [students, payments, halls]);
+  }, [students, payments, halls, LMS.today()]);
 
   // Apply filters and sorting
   const filteredDues = useMemo(() => {
-    let filtered = dueStudentsList;
+    let filtered = dueStudentsList.filter(student => duesFilter.includeInactive || student.isActive !== false);
 
     // Search filter
     if (duesFilter.search.trim()) {
@@ -209,11 +234,7 @@ LMS.Accounts = () => {
     const phone = (student.mobile || student.parentMobile || '').replace(/[^0-9]/g, '');
     if (!phone) return null;
     const template = settings.whatsappTemplate || 'Dear {name}, your library fee of ₹{due} is due since {dueDate}. Please pay at your earliest. - {library}';
-    const msg = template
-      .replace('{name}', student.name)
-      .replace('{due}', student.totalDues)
-      .replace('{dueDate}', LMS.formatDate(student.dueSince))
-      .replace('{library}', settings.libraryName);
+    const msg = LMS.formatMessage(template, student, settings, payments);
     return `https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`;
   };
 
@@ -303,59 +324,7 @@ LMS.Accounts = () => {
                  <!-- Y-Axis Labels -->
                  <div class="flex flex-col justify-between text-[9px] text-gray-400 pr-2 border-r border-gray-100 h-full py-1 text-right min-w-[30px]">
                     ${(() => {
-        // Need max value first, so we will calculate data first then render scales
-        let dataPoints = [];
-        const refDate = new Date(analyticsDate);
-        const now = new Date();
-
-        if (analyticsMode === 'thisMonth') {
-          const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-          for (let i = 1; i <= daysInMonth; i++) {
-            dataPoints.push({ d: new Date(now.getFullYear(), now.getMonth(), i), label: i });
-          }
-        } else if (analyticsMode === 'last3') {
-          for (let i = 2; i >= 0; i--) {
-            const d = new Date(); d.setMonth(d.getMonth() - i);
-            dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-          }
-        } else if (analyticsMode === 'last6') {
-          for (let i = 5; i >= 0; i--) {
-            const d = new Date(); d.setMonth(d.getMonth() - i);
-            dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-          }
-        } else if (analyticsMode === 'last12') {
-          for (let i = 11; i >= 0; i--) {
-            const d = new Date(); d.setMonth(d.getMonth() - i);
-            dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-          }
-        } else if (analyticsMode === 'year') {
-          for (let i = 0; i < 12; i++) {
-            const d = new Date(refDate.getFullYear(), i, 1);
-            dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-          }
-        } else if (analyticsMode === 'month') {
-          const year = refDate.getFullYear();
-          const month = refDate.getMonth();
-          const daysInMonth = new Date(year, month + 1, 0).getDate();
-          for (let i = 1; i <= daysInMonth; i++) {
-            const d = new Date(year, month, i);
-            dataPoints.push({ d, label: i });
-          }
-        }
-
-        const chartData = dataPoints.map(pt => {
-          const isSamePeriod = (d1, d2) => {
-            if (analyticsMode === 'month' || analyticsMode === 'thisMonth')
-              return d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
-            return d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
-          };
-          const inc = payments.filter(p => isSamePeriod(new Date(p.date), pt.d)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-          const exp = expenses.filter(e => isSamePeriod(new Date(e.date), pt.d)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-          return { label: pt.label, income: inc, expense: exp, net: inc - exp };
-        });
-
-        const maxVal = Math.max(100, ...chartData.map(m => Math.max(m.income, m.expense)));
-        window._tempChartData = chartComputed; // Use precomputed useMemo data
+        const maxVal = chartComputed.max;
 
         return html`
                         <span>₹${Math.round(maxVal).toLocaleString()}</span>
@@ -474,7 +443,7 @@ LMS.Accounts = () => {
                    <p class="text-xs text-red-600">Total Expense (Last 3 Months)</p>
                    <p class="font-bold text-red-700">₹${expenses.filter(e => {
           const d = new Date(e.date);
-          const tm = new Date(); tm.setMonth(tm.getMonth() - 3);
+          const tm = new Date(); tm.setDate(1); tm.setMonth(tm.getMonth() - 3);
           return d >= tm;
         }).reduce((s, e) => s + Number(e.amount), 0).toLocaleString('en-IN')
       }</p>
@@ -509,7 +478,7 @@ LMS.Accounts = () => {
               onInput=${e => setDuesFilter({ ...duesFilter, dueSince: e.target.value })} />
           </div>
         </div>
-        <div class="flex gap-4 mt-4">
+        <div class="flex flex-wrap items-center gap-4 mt-4">
           <select class="input-field" style=${{ maxWidth: '200px' }} value=${duesFilter.sortBy}
             onChange=${e => setDuesFilter({ ...duesFilter, sortBy: e.target.value })}>
             <option value="dueSince">Sort by Due Date</option>
@@ -521,6 +490,10 @@ LMS.Accounts = () => {
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
           </select>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked=${duesFilter.includeInactive} onChange=${event => setDuesFilter(previous => ({ ...previous, includeInactive: event.target.checked }))} />
+            Show inactive students
+          </label>
         </div>
       </div>
 
@@ -543,7 +516,7 @@ LMS.Accounts = () => {
         const highlightClass = s.daysDue >= 90 ? 'bg-yellow-50' : '';
         const waLink = getWhatsAppLink(s);
         return html`
-                <tr key=${s.id} class=${highlightClass}>
+                <tr key=${s.id} class=${highlightClass + ' student-open-target'} tabIndex="0" onClick=${event => LMS.studentCardClick(event, s, openStudent)} onKeyDown=${event => LMS.studentCardKeyDown(event, s, openStudent)}>
                   <td class="mono font-bold text-purple-700">${s.rollNo}</td>
                   <td>
                     <span class="font-semibold">${s.name}</span>
@@ -554,7 +527,7 @@ LMS.Accounts = () => {
                   <td class="text-pink-600 font-semibold">${LMS.formatDate(s.paidUntil)} <span class="text-gray-400 text-xs">(${LMS.calculateStudentFinancials(s, payments).paidMonths} months)</span></td>
                   <td class="text-red-500 font-black">${s.daysDue}</td>
                   <td>
-                    <div class="flex gap-2 items-center">
+                    <div class="dues-row-actions">
                       <button 
                         class="text-pink-600 hover:text-pink-800 font-semibold text-sm"
                         style=${{ background: 'none', border: 'none', cursor: 'pointer' }}
@@ -563,6 +536,9 @@ LMS.Accounts = () => {
                       ${waLink && html`
                         <a href=${waLink} target="_blank" class="text-green-500 hover:text-green-700 text-lg" title="Send WhatsApp reminder">💬</a>
                       `}
+                      ${s.isActive === false
+                        ? html`<span class="status-pill inactive">Inactive</span>`
+                        : html`<${Button} size="sm" variant="secondary" className="dues-deactivate-button" onClick=${() => { setDeactivatePassword(''); setDeactivateError(''); setDeactivateStudentId(s.id); }}>Deactivate</${Button}>`}
                     </div>
                   </td>
                 </tr>
@@ -574,6 +550,21 @@ LMS.Accounts = () => {
       </div>
     </${Card}>
 
+    <${Modal} isOpen=${!!deactivateStudentId} onClose=${closeDeactivate} title="Deactivate student" size="sm">
+      <form class="space-y-4" onSubmit=${LMS.safeAction(handleDeactivate)}>
+        <div class="dues-deactivate-summary">
+          <strong>${deactivateStudent?.name || 'Student'}</strong>
+          <span>Roll: ${deactivateStudent?.rollNo || '—'}</span>
+        </div>
+        <p class="dues-deactivate-help">Their seat will be released and new fees will pause during inactivity. Previous dues and payment history will remain saved.</p>
+        <${Input} label="Deactivation password" type="password" inputMode="numeric" autoComplete="off" autoFocus=${true} required value=${deactivatePassword} error=${deactivateError} onChange=${event => { setDeactivatePassword(event.target.value); setDeactivateError(''); }} />
+        <div class="dues-deactivate-footer">
+          <${Button} type="button" variant="secondary" onClick=${closeDeactivate}>Cancel</${Button}>
+          <${Button} type="submit" variant="danger" disabled=${!deactivatePassword}>Deactivate student</${Button}>
+        </div>
+      </form>
+    </${Modal}>
+
     <!-- Payment Modal -->
     <${Modal} isOpen=${paymentModal.open} onClose=${() => setPaymentModal({ open: false, student: null })} title="Collect Payment" size="md">
       ${paymentModal.student && html`<${LMS.PaymentForm} student=${paymentModal.student} onClose=${() => setPaymentModal({ open: false, student: null })} />`}
@@ -583,10 +574,9 @@ LMS.Accounts = () => {
 
 // Collection Card Component (Extracted)
 LMS.CollectionCard = ({ title, stats, isVisible, onToggle, borderColor, requiresPassword, customContent, showToast }) => {
-  const handleToggle = () => {
+  const handleToggle = async () => {
     if (!isVisible && requiresPassword) {
-      const pwd = prompt('Enter password to view ' + title + ':');
-      if (pwd !== '3565-78') {
+      if (!await LMS.Auth.confirmAction('Enter password to view ' + title + ':')) {
         showToast('Incorrect password!', 'error');
         return;
       }

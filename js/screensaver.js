@@ -43,10 +43,9 @@ LMS.Screensaver = () => {
         };
     }, [resetTimer]);
 
-    const handleUnlock = (e) => {
+    const handleUnlock = async (e) => {
         e.preventDefault();
-        console.log("Checking password:", password);
-        if (password === '123') {
+        if (await LMS.Auth.verify(password) || (!LMS.DB.localLoad('owner') && await LMS.Auth.verifyGoogle())) {
             setIsActive(false);
             setShowUnlock(false);
             setPassword('');

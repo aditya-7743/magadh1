@@ -17,9 +17,9 @@ LMS.PasswordModal = ({ isOpen, onClose, onSuccess, title = "Security Check" }) =
     }
   }, [isOpen]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password === 'Adit@7858' || password === '123') {
+    if (await LMS.Auth.verify(password) || (!LMS.DB.localLoad('owner') && await LMS.Auth.verifyGoogle())) {
       onSuccess();
       onClose();
       setPassword('');
@@ -87,30 +87,34 @@ LMS.PasswordModal = ({ isOpen, onClose, onSuccess, title = "Security Check" }) =
 // Button
 LMS.Button = ({ children, variant = 'primary', size = 'md', className = '', ...props }) => {
   const cls = `btn btn-${variant} ${size !== 'md' ? 'btn-' + size : ''} ${className}`;
+  props.disabled = props.disabled || LMS.DB.switching;
+  if (props.onClick) props.onClick = LMS.safeAction(props.onClick);
   return html`<button class=${cls} ...${props}>${children}</button>`;
 };
 
 // Input
-LMS.Input = ({ label, error, className = '', ...props }) => {
+LMS.Input = ({ label, error, className = '', onChange, ...props }) => {
+  const id = React.useId();
   const handleInput = (e) => {
     if (props.autoCapitalize) {
       e.target.value = e.target.value.toUpperCase();
     }
-    if (props.onChange) props.onChange(e);
+    if (onChange) onChange(e);
   };
 
   return html`<div class="space-y-1 ${className}">
-    ${label && html`<label class="input-label">${label}</label>`}
-    <input class="input-field ${error ? 'error' : ''}" ...${props} onInput=${handleInput} />
+    ${label && html`<label class="input-label" htmlFor=${props.id || id}>${label}</label>`}
+    <input id=${props.id || id} class="input-field ${error ? 'error' : ''}" ...${props} onInput=${handleInput} />
     ${error && html`<p class="text-red-400 text-xs">${error}</p>`}
   </div>`;
 };
 
 // Select
 LMS.Select = ({ label, options, className = '', ...props }) => {
+  const id = React.useId();
   return html`<div class="space-y-1 ${className}">
-    ${label && html`<label class="input-label">${label}</label>`}
-    <select class="input-field" ...${props}>
+    ${label && html`<label class="input-label" htmlFor=${props.id || id}>${label}</label>`}
+    <select id=${props.id || id} class="input-field" ...${props}>
       ${options.map(opt => html`<option key=${opt.value} value=${opt.value}>${opt.label}</option>`)}
     </select>
   </div>`;
@@ -122,24 +126,48 @@ LMS.Card = ({ children, className = '', ...props }) => {
 };
 
 // Modal
-LMS.Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
+LMS.Modal = ({ isOpen, onClose, title, children, size = 'md', className = '' }) => {
+  const ref = useRef(null), titleId = React.useId();
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement;
+    const focusable = () => [...ref.current.querySelectorAll('button:not([disabled]), input:not([disabled]), select, textarea, a[href], [tabindex="0"]')].filter(element => element.getClientRects().length);
+    focusable()[0]?.focus();
+    const handleKey = event => {
+      if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
+      if (event.key === 'Tab') {
+        const elements = focusable(), first = elements[0], last = elements.at(-1);
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    const element = ref.current;
+    element.addEventListener('keydown', handleKey);
+    return () => { element.removeEventListener('keydown', handleKey); previous?.focus(); };
+  }, [isOpen]);
+
   if (!isOpen) return null;
-  return html`<div class="modal-overlay">
+  const dialog = html`<div class="modal-overlay" onClick=${event => event.stopPropagation()}>
     <div class="modal-backdrop" onClick=${onClose} />
-    <div class="modal-content modal-${size} animate-scale-in">
+    <div ref=${ref} role="dialog" aria-modal="true" aria-labelledby=${titleId} class="modal-content modal-${size} ${className} animate-scale-in">
       <div class="modal-header">
-        <h2 class="text-xl font-semibold">${title}</h2>
-        <button onClick=${onClose} class="btn btn-ghost btn-sm"><${LMS.Icons.Close} /></button>
+        <h2 id=${titleId} class="text-xl font-semibold">${title}</h2>
+        <button type="button" aria-label="Close dialog" onClick=${onClose} class="btn btn-ghost btn-sm"><${LMS.Icons.Close} /></button>
       </div>
       <div class="modal-body">${children}</div>
     </div>
   </div>`;
+  // Nested payment/map dialogs must not be clipped by the parent dialog's
+  // animated transform or scrolling body.
+  return ReactDOM.createPortal(dialog, document.body);
 };
 
 // Avatar
 LMS.Avatar = ({ src, name = 'User', size = 'md', className = '' }) => {
-  if (src) {
-    return html`<img src=${src} alt=${name} class="rounded-full object-cover border border-gray-200 ${className}" style=${{ width: size === 'lg' ? '3rem' : '2.25rem', height: size === 'lg' ? '3rem' : '2.25rem' }} />`;
+  const photo = LMS.usePhotoSource(src);
+  if (photo.source) {
+    return html`<img src=${photo.source} alt=${name} class="rounded-full object-cover border border-gray-200 ${className}" style=${{ width: size === 'lg' ? '3rem' : '2.25rem', height: size === 'lg' ? '3rem' : '2.25rem' }} />`;
   }
 
   const initials = name
@@ -149,7 +177,7 @@ LMS.Avatar = ({ src, name = 'User', size = 'md', className = '' }) => {
     .join('')
     .toUpperCase();
 
-  const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#f43f5e'];
+  const colors = ['#7738e5', '#00846e', '#b95c06', '#1c61ed', '#cf2473'];
   const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const color = colors[hash % colors.length];
 
@@ -157,6 +185,7 @@ LMS.Avatar = ({ src, name = 'User', size = 'md', className = '' }) => {
     <div class="avatar-initials ${className}" 
       style=${{
       backgroundColor: color,
+      color: '#ffffff',
       width: size === 'lg' ? '3rem' : '2.25rem',
       height: size === 'lg' ? '3rem' : '2.25rem',
       fontSize: size === 'lg' ? '1rem' : '0.85rem'
@@ -164,6 +193,28 @@ LMS.Avatar = ({ src, name = 'User', size = 'md', className = '' }) => {
       ${initials}
     </div>
   `;
+};
+
+// Student photos open independently of the containing card or action row.
+LMS.StudentPhoto = ({ student, size = 'sm', className = '', style }) => {
+  const [preview, setPreview] = useState(false);
+  const photo = student?.photo;
+  return html`<span class=${'student-photo ' + className} style=${style} onClick=${event => { if (photo) event.stopPropagation(); }} onKeyDown=${event => { if (photo) event.stopPropagation(); }}>
+    ${photo ? html`<button type="button" class="student-photo-button" title="View student photo" aria-label=${'View photo of ' + student.name} onClick=${() => setPreview(true)}><${LMS.Avatar} name=${student.name} src=${photo} size=${size} /></button>` : html`<${LMS.Avatar} name=${student?.name || 'Student'} size=${size} />`}
+    <${LMS.ImageViewer} src=${preview ? photo : null} onClose=${() => setPreview(false)} />
+  </span>`;
+};
+LMS.studentCardClick = (event, student, onView) => {
+  if (event.target.closest('button,a,input,select,textarea,label,summary')) return;
+  event.stopPropagation();
+  onView?.(student);
+};
+LMS.studentCardKeyDown = (event, student, onView) => {
+  if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    event.stopPropagation();
+    onView?.(student);
+  }
 };
 
 // Toast
@@ -189,10 +240,9 @@ LMS.Toast = ({ message, type = 'info', onClose }) => {
 // Image Viewer
 LMS.ImageViewer = ({ src, onClose }) => {
   if (!src) return null;
-  return html`<div class="fixed inset-0" style=${{ zIndex: 60, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick=${onClose}>
-    <button class="absolute" style=${{ top: '1rem', right: '1rem', background: '#1e293b', border: 'none', color: 'white', padding: '0.5rem', borderRadius: '0.5rem', cursor: 'pointer' }} onClick=${onClose}><${LMS.Icons.Close} /></button>
-    <img src=${src} alt="Full view" style=${{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '0.5rem' }} onClick=${e => e.stopPropagation()} />
-  </div>`;
+  return html`<${LMS.Modal} isOpen=${true} onClose=${onClose} title="Photo / receipt" size="lg">
+    <${LMS.SqlImage} src=${src} alt="Full view" style=${{ display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: '72dvh', objectFit: 'contain', borderRadius: '0.5rem' }} />
+  </${LMS.Modal}>`;
 };
 
 // Search Bar
@@ -208,34 +258,29 @@ LMS.SearchBar = ({ value, onChange, placeholder }) => {
 
 // Sync Status Indicator
 // Sync Status Indicator
+LMS.useSyncStatus = () => {
+  const [, redraw] = useState(0);
+  useEffect(() => LMS.DB.subscribe(() => redraw(n => n + 1)), []);
+  return LMS.DB.status();
+};
 LMS.SyncStatus = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  if (!isOnline) {
-    return html`<div class="offline-badge">
-      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-      OFFLINE
-    </div>`;
-  }
-
-  if (!LMS.DB.isConfigured) {
-    return html`<div class="text-xs text-orange-500 font-medium">Local Mode</div>`;
-  }
-
-  return html`<div class="flex items-center gap-2 text-xs text-green-600 font-medium transition-all duration-300">
-    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-    <span>Live Sync</span>
+  const status = LMS.useSyncStatus();
+  const text = status.error ? 'Save / sync needs attention' : status.saving ? 'Saving…' : !status.uid ? 'Local Mode' : status.pending ? `${status.pending} pending sync` : !status.online || !status.connected ? 'Cloud offline' : 'Cloud connected';
+  return html`<span role="status" class=${status.error ? 'text-red-500' : 'text-xs'}>${text}</span>`;
+};
+LMS.SaveStatusPanel = () => {
+  const status = LMS.useSyncStatus();
+  const [review, setReview] = useState(false);
+  if (!status.error) return null;
+  const conflict = status.error.startsWith('Cloud changed');
+  return html`<div class="card p-4 m-4" role="alert" style=${{ position: 'relative', zIndex: 100, border: '2px solid #ef4444' }}>
+    <p>${status.error}</p>
+    <button class="btn btn-secondary btn-sm" onClick=${async () => { try { await LMS.DB.flush(); await LMS.DB.processOfflineQueue(); } catch (error) { LMS.DB.fail(error); } }}>Retry save / sync</button>
+    ${conflict && html`<button class="btn btn-secondary btn-sm" onClick=${() => setReview(!review)}>Review conflict</button>`}
+    ${review && conflict && html`<div><p>Pending local changes:</p><pre style=${{ maxHeight: '200px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>${JSON.stringify((LMS.DB.localLoad('offline_queue', [])[0]?.changes || []).map(x => ({ collection: x.key, id: x.id, local: x.key === 'owner' ? '[admin credentials]' : x.value })), null, 2)}</pre>
+      <button class="btn btn-secondary btn-sm" onClick=${() => { if (confirm('Discard this pending operation and use the current cloud records?')) LMS.DB.resolveConflict(false).catch(error => LMS.DB.fail(error)); }}>Use cloud records</button>
+      <button class="btn btn-primary btn-sm" onClick=${() => { if (confirm('Overwrite the conflicting cloud records with these local changes?')) LMS.DB.resolveConflict(true).catch(error => LMS.DB.fail(error)); }}>Keep these local changes</button>
+    </div>`}
   </div>`;
 };
 
@@ -279,6 +324,7 @@ LMS.BottomStatusBar = () => {
   const [backupStatus, setBackupStatus] = useState('idle'); // 'idle' | 'done' | 'backing'
   const [lastBackup, setLastBackup] = useState(null);
   const [localBackupDir, setLocalBackupDir] = useState(null);
+  const backupActionRef = useRef(null);
 
   // Load directory handle from IndexedDB (can't be stored in localStorage)
   useEffect(() => {
@@ -288,9 +334,7 @@ LMS.BottomStatusBar = () => {
   }, []);
 
   // Get seat stats
-  const totalSeats = halls.reduce((sum, h) => sum + (h.seatCount || 0), 0);
-  const occupiedSeats = students.filter(s => s.assignedSeat && s.isActive !== false).length;
-  const availableSeats = totalSeats - occupiedSeats;
+  const { reservableSeats: totalSeats, reservedSeats: occupiedSeats, availableSeats } = useMemo(() => LMS.seatReservationStats(halls, students, shifts), [halls, students, shifts]);
 
   // Auto-backup countdown
   useEffect(() => {
@@ -298,7 +342,7 @@ LMS.BottomStatusBar = () => {
       setCountdown(prev => {
         if (prev <= 1) {
           // Trigger backup
-          performBackup();
+          backupActionRef.current?.();
           return 300;
         }
         return prev - 1;
@@ -328,32 +372,31 @@ LMS.BottomStatusBar = () => {
       setBackupStatus('idle');
     }
   };
+  backupActionRef.current = performBackup;
 
   const saveToLocalDirectory = async () => {
     // Use File System Access API if available
-    if (localBackupDir && typeof localBackupDir.createWritable === 'function') {
+    if (localBackupDir && typeof localBackupDir.getFileHandle === 'function') {
       try {
-        const minStudents = (LMS.DB.localLoad('students') || []).map(s => {
-          const { photo, formPhoto, ...rest } = s; // Strip photos
-          return { ...rest, photo: null, formPhoto: null };
-        });
-
-        const data = {
-          students: minStudents,
-          payments: LMS.DB.localLoad('payments') || [],
-          halls: LMS.DB.localLoad('halls') || [],
-          shifts: LMS.DB.localLoad('shifts') || [],
-          settings: LMS.DB.localLoad('settings') || {},
-          activityLog: LMS.DB.localLoad('activityLog') || [],
-          timestamp: new Date().toISOString()
-        };
-        const fileName = 'magadh_data_backup.json';
+        let data;
+        if (LMS.DB.sqlMode) data = await LMS.DB.completeSqlBackup();
+        else {
+          await LMS.DB.flush();
+          data = {};
+          for (const key of ['students','payments','halls','shifts','settings','activityLog','attendance','expenses','pendingWork','_paymentDeletions','_inactiveFirstSeen']) {
+            const value = LMS.DB.localLoad(key);
+            if (value !== null) data[key] = value;
+          }
+          data.exportDate = new Date().toISOString();
+        }
+        const fileName = LMS.DB.sqlMode ? 'magadh_SQL_backup_' + LMS.today() + '.json' : 'magadh_data_backup.json';
         const fileHandle = await localBackupDir.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(JSON.stringify(data, null, 2));
         await writable.close();
       } catch (err) {
         console.error('Local backup failed:', err);
+        throw err;
       }
     }
   };
@@ -406,9 +449,9 @@ LMS.BottomStatusBar = () => {
 
       <!-- Stats -->
       <div class="status-stats">
-        <span>Total seats: <strong class="text-primary">${totalSeats}</strong></span>
+        <span>Reservable: <strong class="text-primary">${totalSeats}</strong></span>
         <span class="status-dot">•</span>
-        <span>Occupied: <strong class="text-red-500">${occupiedSeats}</strong></span>
+        <span>Reserved: <strong class="text-red-500">${occupiedSeats}</strong></span>
         <span class="status-dot">•</span>
         <span>Available: <strong class="text-green-600">${availableSeats}</strong></span>
       </div>

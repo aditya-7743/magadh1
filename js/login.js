@@ -14,250 +14,79 @@ LMS.LoginPage = ({ onLogin }) => {
     const [firebaseUser, setFirebaseUser] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    const owner = LMS.DB.localLoad('owner') || LMS.DEFAULT_OWNER;
+    const savedOwner = LMS.DB.localLoad('owner');
+    const owner = savedOwner || LMS.DEFAULT_OWNER;
+    const needsSetup = !savedOwner?.credential && !savedOwner?.password;
     const { Button, Input, Card, Icons } = LMS;
 
-    // Check for pending redirect result (mobile sign-in flow)
     useEffect(() => {
-        if (LMS.DB.isConfigured && firebase?.auth) {
-            setLoading(true);
-            firebase.auth().getRedirectResult().then(result => {
-                if (result?.user) {
-                    setFirebaseUser(result.user);
-                    LMS.DB.userId = result.user.uid;
-                    LMS.DB.syncCloudToLocal().then(() => {
-                        LMS.DB.localSave('session', { loggedIn: true, timestamp: Date.now() });
-                        onLogin();
-                    });
-                } else {
-                    setLoading(false);
-                }
-            }).catch(() => {
-                setLoading(false);
-            });
-        }
+        if (!LMS.DB.auth) return;
+        LMS.DB.auth.getRedirectResult().then(async result => {
+            if (!result?.user) return;
+            await LMS.DB.authReady;
+            LMS.Auth.startSession('google'); onLogin();
+        }).catch(error => setError(error.message));
     }, []);
 
-    const handleLogin = (e) => {
-        e.preventDefault();
-        setLoading(true);
-
-        if (username === owner.username && password === owner.password) {
-            LMS.DB.localSave('session', { loggedIn: true, timestamp: Date.now() });
-            onLogin(); // App.js will handle state refresh
-        } else {
-            setError('Invalid credentials! Access denied.');
-            setLoading(false);
-        }
+    const handleLogin = async e => {
+        e.preventDefault(); setLoading(true); setError('');
+        try {
+            if (needsSetup) {
+                if (!username.trim()) throw new Error('Choose an admin username.');
+                const updated = await LMS.Auth.withPassword({ username: username.trim() }, password);
+                await LMS.DB.save('owner', updated);
+            } else if (username.trim() !== owner.username || !await LMS.Auth.verify(password)) {
+                throw new Error('Invalid username or password.');
+            }
+            if (!LMS.Auth.startSession()) throw new Error('Cannot save login session.');
+            onLogin();
+        } catch (error) { setError(error.message); setLoading(false); }
     };
 
-    const handleReset = (e) => {
+    const handleReset = async e => {
         e.preventDefault();
-        if (securityAnswer.toLowerCase() === owner.securityAnswer.toLowerCase()) {
-            const updated = { ...owner, password: newPassword };
-            LMS.DB.localSave('owner', updated);
-            LMS.DB.save('owner', updated);
-            setMode('login');
-            setError('');
-            alert('Password reset successful!');
-        } else {
-            setError('Wrong security answer!');
-        }
+        try {
+            const allowed = owner.recoveryCredential && await LMS.Auth.matches(securityAnswer.trim().toLowerCase(), owner.recoveryCredential);
+            if (!allowed) throw new Error('Private recovery is not configured or the answer is wrong. Use your Google account to sign in, then set a new admin password in Settings.');
+            const updated = await LMS.Auth.withPassword(owner, newPassword);
+            await LMS.DB.save('owner', updated); setMode('login'); setError('');
+        } catch (error) { setError(error.message); }
     };
 
     const handleGoogleSignIn = async () => {
-        if (!LMS.DB.isConfigured) {
-            setError('Firebase not configured. Add your config in js/firebase-db.js');
-            return;
-        }
-        setLoading(true);
-        const user = await LMS.DB.signInWithGoogle();
-        if (user) {
-            setFirebaseUser(user);
-            setError('');
-            try {
-                await LMS.DB.syncCloudToLocal();
-                // window.location.reload(); // Removed reload
-                LMS.DB.localSave('session', { loggedIn: true, timestamp: Date.now() });
-                onLogin(); // Transition to App
-            } catch (e) {
-                console.error('Sync error:', e);
-                setLoading(false);
-            }
-        } else {
-            setError('Google sign-in failed.');
-            setLoading(false);
-        }
+        setLoading(true); setError('');
+        try {
+            const user = await LMS.DB.signInWithGoogle();
+            if (!user) return;
+            await LMS.DB.authReady;
+            if (!LMS.Auth.startSession('google')) throw new Error('Cannot save login session.');
+            onLogin();
+        } catch (error) { setError(error.message); setLoading(false); }
     };
 
-    return html`
-    <div class="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-gray-900">
-        <!-- Dynamic Background -->
-        <div class="absolute inset-0 z-0">
-            <div class="absolute inset-0 bg-gradient-to-br from-gray-900 via-[#1a1a2e] to-[#4b0082] opacity-90"></div>
-            <div class="absolute inset-0 opacity-30" 
-                 style=${{
-            backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.4) 0%, transparent 50%)',
-            animation: 'shimmer 10s infinite linear'
-        }}>
-            </div>
-            <!-- Floating Orbs -->
-            <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-            <div class="absolute top-1/3 right-1/4 w-96 h-96 bg-yellow-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-            <div class="absolute bottom-1/4 left-1/3 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
-        </div>
-
-        <!-- Main Card -->
-        <div class="relative z-10 w-full max-w-lg p-8 mx-4 transform transition-all hover:scale-[1.01] duration-500">
-            <div class="glass rounded-3xl p-8 border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900/60 backdrop-blur-xl relative overflow-hidden group">
-                
-                <!-- Shine Effect -->
-                <div class="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-
-                <!-- Logo & Header -->
-                <div class="text-center mb-10 relative">
-                    <div class="w-24 h-24 mx-auto mb-6 relative group cursor-pointer">
-                        <div class="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl rotate-6 group-hover:rotate-12 transition-transform duration-300 blur-lg opacity-70"></div>
-                        <div class="relative bg-black rounded-2xl w-full h-full flex items-center justify-center border border-white/10 shadow-2xl">
-                            <span class="text-5xl transform group-hover:scale-110 transition-transform duration-300">📚</span>
-                        </div>
-                    </div>
-                    
-                    <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-yellow-100 to-yellow-400 mb-2 drop-shadow-sm tracking-tight"
-                        style=${{ fontFamily: "'Inter', sans-serif" }}>
-                        MAGADH
-                    </h1>
-                    <p class="text-indigo-200 tracking-[0.3em] text-sm uppercase font-bold text-shadow-sm">Library System</p>
-                </div>
-
-                ${mode === 'login' ? html`
-                    <form onSubmit=${handleLogin} class="space-y-6">
-                        <div class="space-y-4">
-                            <!-- Username -->
-                            <div class="relative group">
-                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-purple-400 transition-colors">
-                                    <${Icons.User} />
-                                </div>
-                                <input 
-                                    type="text" 
-                                    value=${username} 
-                                    onInput=${e => setUsername(e.target.value)} 
-                                    placeholder="Username" 
-                                    required
-                                    class="w-full pl-11 pr-4 py-4 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-medium"
-                                />
-                            </div>
-
-                            <!-- Password -->
-                            <div class="relative group">
-                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-purple-400 transition-colors">
-                                    <${Icons.Lock} />
-                                </div>
-                                <input 
-                                    type=${showPassword ? 'text' : 'password'} 
-                                    value=${password} 
-                                    onInput=${e => setPassword(e.target.value)} 
-                                    placeholder="Password" 
-                                    required
-                                    class="w-full pl-11 pr-12 py-4 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all font-medium"
-                                />
-                                <button type="button" 
-                                    class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white transition-colors"
-                                    onClick=${() => setShowPassword(!showPassword)}
-                                >
-                                    ${showPassword ? html`<${Icons.EyeOff} />` : html`<${Icons.Eye} />`}
-                                </button>
-                            </div>
-                        </div>
-
-                        ${error && html`
-                            <div class="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm font-medium flex items-center gap-2 animate-shake">
-                                <span>⚠️</span> ${error}
-                            </div>
-                        `}
-
-                        <button 
-                            type="submit" 
-                            disabled=${loading}
-                            class="w-full py-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 bg-[length:200%_auto] hover:bg-right text-white font-bold rounded-xl shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-2 group"
-                        >
-                            ${loading ? html`<div class="spinner border-white/30 w-5 h-5"></div>` : html`
-                                <span>ACCESS PORTAL</span>
-                                <span class="group-hover:translate-x-1 transition-transform">➔</span>
-                            `}
-                        </button>
-
-                        <div class="relative py-4">
-                            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div>
-                            <div class="relative flex justify-center text-sm"><span class="px-2 bg-slate-900/60 text-gray-400">Secure Options</span></div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-4">
-                            <button type="button" onClick=${handleGoogleSignIn} 
-                                class="px-4 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 shadow-sm">
-                                <${Icons.Google} /> Cloud Sync
-                            </button>
-                            <button type="button" onClick=${() => setMode('reset')}
-                                class="px-4 py-3 bg-gray-800 text-gray-300 rounded-xl font-medium hover:bg-gray-700 transition-colors border border-gray-700">
-                                Forgot Password?
-                            </button>
-                        </div>
-                    </form>
-                ` : html`
-                    <!-- RESET PASSWORD FORM (Kept similar style) -->
-                    <form onSubmit=${handleReset} class="space-y-6 animate-fade-in-up">
-                        <div class="text-center mb-6">
-                            <h3 class="text-xl font-bold text-white mb-1">Account Recovery</h3>
-                            <p class="text-sm text-gray-400">Answer your security question</p>
-                        </div>
-                        
-                        <div class="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 mb-4">
-                            <p class="text-xs text-purple-300 uppercase font-bold tracking-wider mb-1">Security Question</p>
-                            <p class="text-white font-medium">${owner.securityQuestion}</p>
-                        </div>
-
-                        <div class="space-y-4">
-                             <div>
-                                <input 
-                                    type="text" 
-                                    value=${securityAnswer} 
-                                    onInput=${e => setSecurityAnswer(e.target.value)} 
-                                    placeholder="Your Answer" 
-                                    required
-                                    class="w-full px-4 py-4 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-all"
-                                />
-                            </div>
-                            <div>
-                                <input 
-                                    type="password" 
-                                    value=${newPassword} 
-                                    onInput=${e => setNewPassword(e.target.value)} 
-                                    placeholder="New Password" 
-                                    required
-                                    class="w-full px-4 py-4 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-all"
-                                />
-                            </div>
-                        </div>
-                        
-                        <button type="submit" 
-                            class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold rounded-xl shadow-lg hover:shadow-emerald-500/30 transform hover:-translate-y-1 transition-all">
-                            Reset Password
-                        </button>
-                        
-                        <button type="button" 
-                            class="w-full text-gray-400 hover:text-white text-sm font-medium transition-colors" 
-                            onClick=${() => setMode('login')}>
-                            ← Back to Login
-                        </button>
-                    </form>
-                `}
-            </div>
-            
-            <p class="text-center text-gray-500 text-xs mt-8 opacity-60">
-                &copy; ${new Date().getFullYear()} Magadh Library. All Rights Reserved. <br/>
-                Protected by secure authentication.
-            </p>
-        </div>
-    </div>
-  `;
+    const libraryName = LMS.DB.localLoad('settings', {}).libraryName || LMS.DEFAULT_SETTINGS.libraryName;
+    return html`<div class="login-stage">
+      <section class="login-story">
+        <div class="login-brand"><span class="brand-mark"><${Icons.Seats} /></span>${libraryName}</div>
+        <div class="login-story-content"><div class="login-kicker">A LITTLE ORDER. A LOT OF POSSIBILITY.</div><h1>Your library.<br/><em>Beautifully organised.</em></h1><p>One thoughtful workspace for your students, seats and everyday library life.</p><div class="library-illustration" aria-hidden="true">${Array.from({length:24}, (_, i) => html`<i key=${i}></i>`)}</div></div>
+        <div class="login-story-footer">Built for the people behind a place to learn.</div>
+      </section>
+      <section class="login-form-side"><div class="login-form-wrap">
+        <div class="page-eyebrow">LIBRARY WORKSPACE</div><h2>${LMS.DB.sqlMode ? 'Welcome back' : mode === 'reset' ? 'Account recovery' : needsSetup ? 'Set up your workspace' : 'Welcome back'}</h2><p class="login-intro">${LMS.DB.sqlMode ? 'Sign in with your authorised library Google account.' : mode === 'reset' ? 'Use your private recovery answer to reset your password.' : needsSetup ? 'Create an admin account to get started.' : 'Sign in to take care of your library.'}</p>
+        ${error && html`<div role="alert" class="login-error">${error}</div>`}
+        ${LMS.DB.sqlMode ? html`<button class="btn btn-primary w-full" type="button" onClick=${handleGoogleSignIn} disabled=${loading}><${Icons.Google} />${loading ? 'Connecting…' : 'Continue with Google'}</button>` : mode === 'login' ? html`
+          ${needsSetup && html`<div class="login-notice">Choose a username and a password with at least 8 characters.</div>`}
+          <form onSubmit=${handleLogin}>
+            <div><label class="input-label" htmlFor="login-username">Username</label><input id="login-username" class="input-field" autoComplete="username" type="text" value=${username} onInput=${e => setUsername(e.target.value)} placeholder="Username" required /></div>
+            <div><div class="flex justify-between items-center"><label class="input-label" htmlFor="login-password">Password</label>${!needsSetup && html`<button type="button" class="text-link" onClick=${() => { setError(''); setMode('reset'); }}>Forgot password?</button>`}</div><div class="password-input"><input id="login-password" class="input-field" autoComplete=${needsSetup ? 'new-password' : 'current-password'} type=${showPassword ? 'text' : 'password'} value=${password} onInput=${e => setPassword(e.target.value)} placeholder="Password" required /><button type="button" aria-label=${showPassword ? 'Hide password' : 'Show password'} onClick=${() => setShowPassword(!showPassword)}>${showPassword ? html`<${Icons.EyeOff} />` : html`<${Icons.Eye} />`}</button></div></div>
+            <button class="btn btn-primary w-full" type="submit" disabled=${loading}>${loading ? 'Please wait…' : needsSetup ? 'Create admin account' : 'Sign in'} <span aria-hidden="true">→</span></button>
+          </form>
+          <div class="login-divider">or continue with</div><button class="btn btn-secondary w-full" type="button" onClick=${handleGoogleSignIn} disabled=${loading}><${Icons.Google} />Google account</button>
+        ` : html`
+          <div class="login-notice">${owner.securityQuestion || 'Private recovery is not configured. Sign in with Google, then change your password in Settings.'}</div>
+          <form onSubmit=${handleReset}><${Input} label="Recovery answer" placeholder="Your Answer" value=${securityAnswer} onChange=${e => setSecurityAnswer(e.target.value)} required /><${Input} label="New password" placeholder="New Password" type="password" autoComplete="new-password" value=${newPassword} onChange=${e => setNewPassword(e.target.value)} required /><button class="btn btn-primary w-full" type="submit">Reset password</button><button class="btn btn-secondary w-full" type="button" onClick=${() => { setMode('login'); setError(''); }}>Back to sign in</button></form>
+        `}
+        <p class="login-footnote">Administrator access · ${libraryName}</p>
+      </div></section>
+    </div>`;
 };

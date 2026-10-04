@@ -2,9 +2,12 @@
 window.LMS = window.LMS || {};
 
 LMS.Attendance = () => {
-  const { students, settings, setPendingWork, showToast, addLog } = useContext(LMS.AppContext);
-  const [attendance, setAttendance] = useState(() => LMS.DB.localLoad('attendance') || {});
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const { students, settings, setPendingWork, showToast, addLog, openStudent } = useContext(LMS.AppContext);
+  const [, redraw] = useState(0);
+  const attendance = LMS.DB.localLoad('attendance', {});
+  const setAttendance = update => { const current = LMS.DB.localLoad('attendance', {}); LMS.DB.stage('attendance', typeof update === 'function' ? update(current) : update); };
+  useEffect(() => LMS.DB.subscribe(key => { if (key === 'attendance' || key === 'scope') redraw(n => n + 1); }), []);
+  const [selectedDate, setSelectedDate] = useState(LMS.today());
   const [searchTerm, setSearchTerm] = useState('');
   const [attRoll, setAttRoll] = useState('');
   const [attStatus, setAttStatus] = useState(true);
@@ -13,13 +16,6 @@ LMS.Attendance = () => {
   // Feature 2: History viewer state
   const [historyRoll, setHistoryRoll] = useState('');
   const [historyMonths, setHistoryMonths] = useState(3);
-
-  // Auto-save attendance (Local only)
-  useEffect(() => {
-    LMS.DB.localSave('attendance', attendance);
-    // ⚠️ CLOUD SYNC REMOVED HERE: We now use granular updates in mark/toggle functions
-    // to prevent overwriting the entire attendance database.
-  }, [attendance]);
 
   // Filter active students
   const activeStudents = useMemo(() => students.filter(s => s.isActive !== false), [students]);
@@ -30,7 +26,7 @@ LMS.Attendance = () => {
     for (let i = 0; i < n; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(LMS.today(d));
     }
     return dates;
   };
@@ -42,7 +38,7 @@ LMS.Attendance = () => {
     e.preventDefault();
     if (!attRoll.trim()) { showToast('Please enter a roll number', 'error'); return; }
 
-    const student = students.find(s => s.rollNo?.toLowerCase() === attRoll.toLowerCase());
+    const student = students.find(s => s.rollNo?.toLowerCase() === attRoll.trim().toLowerCase());
 
     if (!student) {
       // Unregistered student — ask for name, mark attendance + add to pending work
@@ -54,16 +50,12 @@ LMS.Attendance = () => {
       const attData = { status: attStatus, rollNo: attRoll.trim(), name: studentName.trim(), unregistered: true };
 
       setAttendance(prev => {
-        const copy = { ...prev };
+        const copy = { ...prev, [selectedDate]: { ...prev[selectedDate] } };
         if (!copy[selectedDate]) copy[selectedDate] = {};
         copy[selectedDate][unregKey] = attData;
         return copy;
       });
 
-      // GRANULAR CLOUD SYNC
-      if (LMS.DB.childSave) {
-        LMS.DB.childSave('attendance', `${selectedDate}/${unregKey}`, attData);
-      }
 
       // Also add to pending work
       const newWork = {
@@ -81,16 +73,12 @@ LMS.Attendance = () => {
 
     // Registered student — normal flow
     setAttendance(prev => {
-      const copy = { ...prev };
+      const copy = { ...prev, [selectedDate]: { ...prev[selectedDate] } };
       if (!copy[selectedDate]) copy[selectedDate] = {};
       copy[selectedDate][student.id] = attStatus;
       return copy;
     });
 
-    // GRANULAR CLOUD SYNC
-    if (LMS.DB.childSave) {
-      LMS.DB.childSave('attendance', `${selectedDate}/${student.id}`, attStatus);
-    }
 
     showToast(`Marked ${student.name} as ${attStatus ? 'Present' : 'Absent'}`, 'success');
     addLog(`Attendance: ${student.name} marked ${attStatus ? 'Present' : 'Absent'}`);
@@ -98,43 +86,20 @@ LMS.Attendance = () => {
   };
 
   const toggleAttendance = (studentId) => {
-    let newVal;
-    setAttendance(prev => {
-      const copy = { ...prev };
-      if (!copy[selectedDate]) copy[selectedDate] = {};
-      const current = copy[selectedDate][studentId];
-      newVal = current === true ? false : current === false ? undefined : true;
-
-      if (newVal === undefined) delete copy[selectedDate][studentId];
-      else copy[selectedDate][studentId] = newVal;
-
-      return copy;
-    });
-
-    // GRANULAR CLOUD SYNC
-    if (LMS.DB.childSave) {
-      if (newVal === undefined) {
-        // If we could delete a child, we would, but setting to null works too in Firebase
-        LMS.DB.childSave('attendance', `${selectedDate}/${studentId}`, null);
-      } else {
-        LMS.DB.childSave('attendance', `${selectedDate}/${studentId}`, newVal);
-      }
-    }
+    const current = LMS.DB.localLoad('attendance', {})[selectedDate]?.[studentId];
+    const next = current === true ? false : current === false ? null : true;
+    LMS.DB.childSave('attendance', `${selectedDate}/${studentId}`, next).catch(error => LMS.DB.fail(error));
   };
+
 
   const getPresentCount = (date) => {
     const dayAtt = attendance[date] || {};
-    let count = 0;
-    Object.values(dayAtt).forEach(v => {
-      if (v === true) count++;
-      else if (typeof v === 'object' && v && v.status === true) count++;
-    });
-    return count;
+    return activeStudents.filter(student => dayAtt[student.id] === true).length;
   };
 
   const isDateComplete = (date) => {
     const dayAtt = attendance[date] || {};
-    return Object.keys(dayAtt).length >= activeStudents.length;
+    return activeStudents.length > 0 && activeStudents.every(student => dayAtt[student.id] === true || dayAtt[student.id] === false);
   };
 
   const getStudentStatus = (studentId, date) => {
@@ -166,7 +131,7 @@ LMS.Attendance = () => {
     );
   }, [activeStudents, searchTerm]);
 
-  const attStudentName = attRoll ? students.find(s => s.rollNo?.toLowerCase() === attRoll.toLowerCase())?.name : '';
+  const attStudentName = attRoll ? students.find(s => s.rollNo?.toLowerCase() === attRoll.trim().toLowerCase())?.name : '';
 
   // Feature 2: History helpers
   const historyStudent = useMemo(() => {
@@ -222,7 +187,7 @@ LMS.Attendance = () => {
     <div class="grid md-grid-2 gap-6">
       <!-- Mark Attendance Card -->
       <${Card} className="card-primary">
-        <h3 class="font-bold text-lg mb-4 text-primary-gradient">✍️ Mark Attendance</h3>
+        <h3 class="font-bold text-lg mb-4 text-primary-gradient">Mark attendance</h3>
         <form onSubmit=${markAttendance} class="space-y-4">
           <${Input} label="Date" type="date" value=${selectedDate} onChange=${e => setSelectedDate(e.target.value)} />
           <${Input} label="Roll No." value=${attRoll} onChange=${e => setAttRoll(e.target.value)} placeholder="Enter roll number" />
@@ -241,7 +206,7 @@ LMS.Attendance = () => {
 
       <!-- Daily Summary Card -->
       <${Card} className="card-secondary">
-        <h3 class="font-bold text-lg mb-4 text-secondary-gradient">📊 Daily Summary (Last 30 Days)</h3>
+        <h3 class="font-bold text-lg mb-4 text-secondary-gradient">Daily summary · last 30 days</h3>
         <div class="max-h-96 overflow-y-auto space-y-2">
           ${recentDates.map(date => html`
             <div key=${date} class="flex justify-between items-center bg-gray-100 p-3 rounded-xl border hover:bg-gray-50 transition-colors">
@@ -261,7 +226,7 @@ LMS.Attendance = () => {
     <!-- Student Grid -->
     <${Card}>
       <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h3 class="font-bold text-lg">👥 Students for ${LMS.formatDate(selectedDate)}</h3>
+        <h3 class="font-bold text-lg">Students for ${LMS.formatDate(selectedDate)}</h3>
         <${Input} value=${searchTerm} onChange=${e => setSearchTerm(e.target.value)} placeholder="Search roll, name, mobile..." style=${{ maxWidth: '300px' }} />
       </div>
       
@@ -293,18 +258,16 @@ LMS.Attendance = () => {
         return html`
             <div key=${s.id} 
               class="p-3 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 hover:shadow-lg ${bgColor}"
-              onClick=${() => toggleAttendance(s.id)}>
+              tabIndex="0" onClick=${event => LMS.studentCardClick(event, s, openStudent)} onKeyDown=${event => LMS.studentCardKeyDown(event, s, openStudent)}>
               <div class="flex items-center gap-2 mb-1">
-                ${s.photo
-            ? html`<img src=${s.photo} class="w-8 h-8 rounded-full object-cover" />`
-            : html`<div class="w-8 h-8 rounded-full bg-pink-200 flex items-center justify-center font-bold text-pink-700">${(s.name || '?').charAt(0)}</div>`
-          }
+                <${LMS.StudentPhoto} student=${s} />
                 <p class="font-bold text-sm truncate">${s.rollNo}</p>
               </div>
               <p class="text-xs truncate text-gray-600">${s.name}</p>
               <p class="text-xs font-semibold mt-1 ${status === 'Present' ? 'text-green-600' : status === 'Absent' ? 'text-red-600' : 'text-gray-500'}">
                 ${status === 'Present' ? '✓ Present' : status === 'Absent' ? '✗ Absent' : '○ Not Taken'}
               </p>
+              <${Button} size="sm" variant="secondary" className="attendance-mark-button" onClick=${() => toggleAttendance(s.id)}>${status === 'Present' ? 'Mark absent' : status === 'Absent' ? 'Clear attendance' : 'Mark present'}</${Button}>
             </div>
           `;
       })}

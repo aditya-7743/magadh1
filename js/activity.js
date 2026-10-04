@@ -9,8 +9,7 @@ LMS.ActivityLog = () => {
   const [showClearAuth, setShowClearAuth] = useState(false);
   const [clearPass, setClearPass] = useState('');
 
-  // Get last 100 activities (Already sorted newest first in app.js:addLog)
-  const recentLogs = (activityLog || []).slice(0, 100);
+  const recentLogs = useMemo(() => LMS.latestActivity(activityLog, 100), [activityLog]);
 
   const handleAddWork = (e) => {
     e.preventDefault();
@@ -23,65 +22,33 @@ LMS.ActivityLog = () => {
     };
     setPendingWork(prev => [work, ...prev]);
 
-    // Cloud Sync
-    if (LMS.DB.saveItem) LMS.DB.saveItem('pendingWork_v2', work);
 
     setNewWork('');
     showToast('Task added to pending list', 'success');
   };
 
   const toggleWork = (id) => {
-    let updatedWork = null;
-    setPendingWork(prev => prev.map(w => {
-      if (w.id === id) {
-        updatedWork = { ...w, completed: !w.completed };
-        return updatedWork;
-      }
-      return w;
-    }));
-
-    // Cloud Sync
-    if (updatedWork && LMS.DB.saveItem) LMS.DB.saveItem('pendingWork_v2', updatedWork);
+    setPendingWork(prev => prev.map(w => w.id === id ? { ...w, completed: !w.completed } : w));
   };
 
   const deleteWork = (id) => {
     if (confirm('Delete this task?')) {
       setPendingWork(prev => prev.filter(w => w.id !== id));
-      // Cloud Sync
-      if (LMS.DB.removeItem) LMS.DB.removeItem('pendingWork_v2', id);
     }
   };
 
   const clearCompleted = () => {
-    // Basic clear of completed items
-    const toRemove = [];
-    setPendingWork(prev => {
-      const kept = [];
-      prev.forEach(w => {
-        if (w.completed) toRemove.push(w.id);
-        else kept.push(w);
-      });
-      return kept;
-    });
-
-    // Cloud Sync
-    if (LMS.DB.removeItem) {
-      toRemove.forEach(id => LMS.DB.removeItem('pendingWork_v2', id));
-    }
+    setPendingWork(prev => prev.filter(w => !w.completed));
     showToast('Completed tasks cleared', 'success');
   };
 
-  const handleClearAll = () => {
-    if (clearPass === '123') {
+  const handleClearAll = async () => {
+    if (await LMS.Auth.verify(clearPass)) {
       // Get all IDs to remove them from cloud
       const allIds = pendingWork.map(w => w.id);
 
       setPendingWork([]);
 
-      // Cloud Sync
-      if (LMS.DB.removeItem) {
-        allIds.forEach(id => LMS.DB.removeItem('pendingWork_v2', id));
-      }
 
       setShowClearAuth(false);
       setClearPass('');
@@ -97,7 +64,7 @@ LMS.ActivityLog = () => {
     <!-- Pending Work Section -->
     <${Card} className="bg-orange-50 border border-orange-200">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="font-bold text-lg text-orange-800">📝 Pending Work / Tasks</h3>
+        <h3 class="font-bold text-lg text-orange-800">Pending work</h3>
         <div class="flex gap-2">
             <button class="text-xs text-orange-600 underline" onClick=${clearCompleted}>Clear Completed</button>
             <button class="text-xs text-red-600 underline font-bold" onClick=${() => setShowClearAuth(true)}>Clear All (Auth)</button>
@@ -127,11 +94,11 @@ LMS.ActivityLog = () => {
 
     <!-- Activity Log -->
     <div class="space-y-4">
-      <h3 class="font-bold text-lg">System Activity Log</h3>
-      <p class="text-sm text-gray-500">Showing last 100 activities</p>
+      <h3 class="font-bold text-lg">Activity history</h3>
+      <p class="text-sm text-gray-500">Latest ${recentLogs.length} activities · newest first</p>
       <${Card}>
         <div class="space-y-1 max-h-96 overflow-y-auto">
-          ${recentLogs.length > 0 ? recentLogs.map((log, i) => html`<div key=${i} class="flex justify-between items-center p-3 rounded-lg" style=${{ background: i % 2 === 0 ? '#f3f4f6' : '#ffffff', borderBottom: '1px solid #e5e7eb' }}>
+          ${recentLogs.length > 0 ? recentLogs.map((log, i) => html`<div key=${i} class="flex justify-between items-center p-3 rounded-lg" style=${{ background: i % 2 === 0 ? 'var(--surface-soft)' : 'var(--bg-card)', borderBottom: '1px solid var(--border-color)' }}>
             <span class="text-sm text-gray-800">${log.action}</span>
             <span class="text-sm text-gray-400 mono">${LMS.formatDate(log.timestamp)} ${new Date(log.timestamp).toLocaleTimeString()}</span>
           </div>`)
@@ -144,7 +111,7 @@ LMS.ActivityLog = () => {
     <${Modal} isOpen=${showClearAuth} onClose=${() => setShowClearAuth(false)} title="Security Check" size="sm">
       <div class="p-4 space-y-4">
         <p class="text-sm text-red-600 font-bold">Enter password to clear ALL pending tasks:</p>
-        <input type="password" class="input-field" value=${clearPass} onChange=${e => setClearPass(e.target.value)} placeholder="Password (123)" />
+        <input type="password" class="input-field" value=${clearPass} onChange=${e => setClearPass(e.target.value)} placeholder="Admin password" />
         <div class="flex justify-end gap-2">
             <${Button} variant="secondary" onClick=${() => setShowClearAuth(false)}>Cancel</${Button}>
             <${Button} variant="danger" onClick=${handleClearAll}>CLEAR ALL</${Button}>

@@ -14,6 +14,7 @@ LMS.Settings = ({ onLogout }) => {
     confirm: ''
   });
   const [syncing, setSyncing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const { Button, Card, Modal, Input, Icons } = LMS;
 
   const qrStyle = { width: '60px', height: '60px', objectFit: 'contain' };
@@ -36,100 +37,51 @@ LMS.Settings = ({ onLogout }) => {
 
   // Shift Management
   const addShift = () => {
-    if (!newShift.name || !newShift.startTime || !newShift.endTime) {
+    if (!newShift.name.trim() || !/^([01]\d|2[0-3]):[0-5]\d$/.test(newShift.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(newShift.endTime) || newShift.startTime === newShift.endTime) {
       showToast('Please fill all shift fields', 'error');
       return;
     }
     const newShiftData = { ...newShift, id: LMS.generateId() };
     setShifts(prev => [...prev, newShiftData]);
-    if (LMS.DB.saveItem) LMS.DB.saveItem('shifts', newShiftData);
     setNewShift({ name: '', startTime: '', endTime: '' });
     addLog('Added shift: ' + newShift.name);
     showToast('Shift added!', 'success');
   };
 
-  const removeShift = (shift) => {
-    const pwd = prompt('Enter password to delete shift:');
-    if (pwd !== '123') {
-      showToast('Incorrect password!', 'error');
-      return;
-    }
-    setShifts(prev => prev.filter(s => s.id !== shift.id));
-    addLog('Deleted shift: ' + shift.name);
-    showToast('Shift deleted!', 'success');
+  const removeShift = async shift => {
+    if (students.some(s => s.isActive !== false && s.assignedSeat && s.shift === shift.id && LMS.resolveSeat(s.assignedSeat, halls)?.shared)) { showToast('Move or release shared-seat reservations using this shift before deleting it.', 'error'); return; }
+    if (!confirm('Delete shift ' + shift.name + '? Assigned students will become unassigned.')) return;
+    if (!await LMS.Auth.confirmAction()) { showToast('Authentication failed', 'error'); return; }
+    setStudents(previous => previous.map(s => s.shift === shift.id ? { ...s, shift: '' } : s));
+    setShifts(previous => previous.filter(s => s.id !== shift.id));
+    addLog('Deleted shift: ' + shift.name); showToast('Shift removed', 'success');
   };
 
-
-
-  // Password Management
-  // Profile Management
-  const updateProfile = () => {
-    if (passwordForm.current !== owner.password) { showToast('Current password is wrong!', 'error'); return; }
-
-    // Only update password if new password is provided
-    let newPassword = owner.password;
-    if (passwordForm.new) {
-      if (passwordForm.new !== passwordForm.confirm) { showToast('New passwords do not match!', 'error'); return; }
-      newPassword = passwordForm.new;
-    }
-
-    const newOwner = { ...owner, username: passwordForm.username, password: newPassword };
-    LMS.DB.localSave('owner', newOwner);
-    LMS.DB.save('owner', newOwner);
-    setOwner(newOwner);
-    setPasswordForm(p => ({ ...p, current: '', new: '', confirm: '' })); // Keep username, clear passwords
-    addLog('Admin profile updated');
-    showToast('Profile updated successfully!', 'success');
+  const updateProfile = async () => {
+    try {
+      const old = LMS.DB.localLoad('owner') || {};
+      const authenticated = passwordForm.current ? await LMS.Auth.verify(passwordForm.current) : await LMS.Auth.verifyGoogle();
+      if (!authenticated) throw new Error('Admin authentication failed.');
+      if (!passwordForm.username.trim()) throw new Error('Username is required.');
+      if (passwordForm.new !== passwordForm.confirm) throw new Error('New passwords do not match.');
+      let updated = { ...LMS.DB.localLoad('owner', {}), username: passwordForm.username.trim() };
+      if (passwordForm.new) updated = await LMS.Auth.withPassword(updated, passwordForm.new);
+      else if (updated.password) updated = await LMS.Auth.withPassword(updated, updated.password, false);
+      await LMS.DB.save('owner', updated); setOwner(updated);
+      setPasswordForm(p => ({ ...p, current: '', new: '', confirm: '' }));
+      addLog('Admin profile updated'); showToast('Profile saved', 'success');
+    } catch (error) { showToast(error.message, 'error'); }
   };
 
-  // Duplicate Fixer
-  const fixDuplicates = () => {
-    if (!confirm('This will merge students with identical Roll Numbers. The one with the most recent admission date will be kept. Proceed?')) return;
-
-    // Group by Roll No
-    const map = {};
-    students.forEach(s => {
-      const roll = s.rollNo ? String(s.rollNo).trim().toUpperCase() : 'UNKNOWN';
-      if (roll === 'UNKNOWN') return;
-      if (!map[roll]) map[roll] = [];
-      map[roll].push(s);
-    });
-
-    let removedCount = 0;
-
-    Object.entries(map).forEach(([roll, group]) => {
-      if (group.length > 1) {
-        // Sort: Keep the one with most recent admission date
-        group.sort((a, b) => {
-          const dateA = new Date(a.admissionDate || 0);
-          const dateB = new Date(b.admissionDate || 0);
-          return dateB - dateA; // Descending date
-        });
-
-        const winner = group[0];
-        const losers = group.slice(1);
-
-        losers.forEach(loser => {
-          // Reassign payments to winner
-          const loserPayments = payments.filter(p => p.studentId === loser.id);
-          loserPayments.forEach(p => {
-            const updatedPayment = { ...p, studentId: winner.id };
-            if (LMS.DB.saveItem) LMS.DB.saveItem('payments', updatedPayment);
-          });
-
-          // Remove loser student
-          if (LMS.DB.removeItem) LMS.DB.removeItem('students', loser.id);
-          removedCount++;
-        });
-      }
-    });
-
-    if (removedCount > 0) {
-      alert(`Merged & Removed ${removedCount} duplicate students. Reloading...`);
-      window.location.reload();
-    } else {
-      alert('No duplicates found!');
-    }
+  const fixDuplicates = async () => {
+    if (!confirm('Merge identical roll numbers into the most recent admission? All source records and fee histories will be retained in merged history.')) return;
+    const repaired = LMS.mergeDuplicateStudents(students, payments, LMS.DB.localLoad('attendance', {}));
+    if (!repaired.count) { showToast('No duplicate roll numbers found'); return; }
+    setStudents(repaired.students); setPayments(repaired.payments);
+    LMS.DB.stage('attendance', repaired.attendance);
+    addLog('Merged duplicate students: ' + repaired.count);
+    try { await LMS.DB.flush(); showToast('Duplicate repair saved; cloud changes queued together', 'success'); }
+    catch (error) { showToast(error.message, 'error'); }
   };
 
   // Backup Functions
@@ -141,17 +93,27 @@ LMS.Settings = ({ onLogout }) => {
 
   const importBackup = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file || importing) return;
+    setImporting(true);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
-        const data = JSON.parse(ev.target.result);
+        const data = JSON.parse(String(ev.target.result).replace(/^\uFEFF/, ''));
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The backup must contain a JSON object.');
+        const collections = {};
         let convertedStudents = [];
         let convertedPayments = [];
 
         if (data.students && !Array.isArray(data.students)) {
           Object.entries(data.students).forEach(([rollKey, student]) => {
+            if (!student || typeof student !== 'object' || Array.isArray(student)) throw new Error('Students contains an invalid record.');
+            // Modern keyed records already use the current field names.
+            if ('rollNo' in student || 'isActive' in student) {
+              convertedStudents.push({ ...student, id: student.id || rollKey });
+              return;
+            }
             const newStudent = {
+              ...student,
               id: student.id || LMS.generateId(),
               rollNo: student.roll || rollKey,
               name: student.name || '',
@@ -185,25 +147,26 @@ LMS.Settings = ({ onLogout }) => {
               });
             }
           });
-          LMS.DB.localSave('students', convertedStudents);
-          setStudents(convertedStudents);
-          LMS.DB.localSave('payments', convertedPayments);
-          setPayments(convertedPayments);
-          showToast(`Converted ${convertedStudents.length} students!`, 'success');
+          collections.students = convertedStudents;
+          if (convertedPayments.length) collections.payments = convertedPayments;
         } else {
-          if (data.students) { LMS.DB.localSave('students', data.students); setStudents(data.students); }
-          if (data.payments) { LMS.DB.localSave('payments', data.payments); setPayments(data.payments); }
-          showToast('Backup imported!', 'success');
+          if (data.students !== undefined) collections.students = data.students;
         }
-        if (data.halls) { LMS.DB.localSave('halls', data.halls); setHalls(data.halls); }
-        if (data.shifts) { LMS.DB.localSave('shifts', data.shifts); setShifts(data.shifts); }
-        if (data.settings) { LMS.DB.localSave('settings', data.settings); setSettings(data.settings); }
-        addLog('Backup imported successfully');
+        for (const key of ['payments', 'halls', 'shifts', 'settings', 'activityLog', 'expenses', 'attendance', 'pendingWork']) {
+          if (data[key] !== undefined) collections[key] = data[key];
+        }
+        if (convertedPayments.length && data.payments) {
+          if (!Array.isArray(data.payments)) throw new Error('Payments must be a list of records.');
+          collections.payments = [...new Map([...convertedPayments, ...data.payments].map(payment => [payment.id, payment])).values()];
+        }
+        await LMS.DB.restoreCollections(collections);
+        showToast('Backup imported and saved locally!', 'success');
       } catch (err) {
         console.error('Import error:', err);
-        showToast('Invalid backup file!', 'error');
-      }
+        showToast(err instanceof SyntaxError ? 'This file is not valid JSON.' : 'Import failed: ' + err.message, 'error');
+      } finally { setImporting(false); }
     };
+    reader.onerror = () => { setImporting(false); showToast('Could not read the backup file. Please select it again.', 'error'); };
     reader.readAsText(file);
     e.target.value = '';
   };
@@ -236,6 +199,7 @@ LMS.Settings = ({ onLogout }) => {
     if (!LMS.DB.isConfigured) { showToast('Firebase not configured!', 'error'); return; }
     const user = await LMS.DB.signInWithGoogle();
     if (user) {
+      LMS.Auth.startSession('google'); LMS.DB.notify('auth');
       showToast('Connected as ' + (user.displayName || user.email), 'info');
       setSyncing(true);
       const ok = await LMS.DB.syncCloudToLocal();
@@ -252,8 +216,10 @@ LMS.Settings = ({ onLogout }) => {
   };
 
   return html`<div class="space-y-6">
+    <${LMS.AttendanceAlertSettings} key=${LMS.DB.scope} />
+    <${LMS.SqlMigrationPanel} />
     <!-- 1. Admin Profile Section -->
-    <div class="p-4 bg-card rounded-xl border-l-4 border-blue-500 shadow-sm">
+    <div class="p-4 bg-card rounded-xl border-l-4 border-blue-500 shadow-sm settings-admin">
       <h3 class="font-bold text-blue-700 mb-3">Update Admin Profile</h3>
       <div class="space-y-3">
         <${Input} label="Username" value=${passwordForm.username} onChange=${e => setPasswordForm(p => ({ ...p, username: e.target.value }))} />
@@ -268,6 +234,7 @@ LMS.Settings = ({ onLogout }) => {
       </div>
     </div>
 
+    <div class="card p-4"><${Input} label="Library Name" value=${settings.libraryName} onChange=${e => handleSettingChange('libraryName', e.target.value)} /></div>
     <!-- 2. Upload QR Code Section -->
     <div class="p-4 bg-card rounded-xl border-l-4 border-yellow-500 shadow-sm">
       <h3 class="font-bold text-yellow-700 mb-3">Upload QR Code for Payments</h3>
@@ -275,7 +242,7 @@ LMS.Settings = ({ onLogout }) => {
         <label class="cursor-pointer">
           <span class="px-4 py-2 bg-gray-100 border rounded-lg text-sm text-gray-600 hover:bg-gray-200">Choose file</span>
           <span class="ml-2 text-sm text-gray-400">${(settings || {}).qrCode ? 'QR Uploaded' : 'No file chosen'}</span>
-          <input type="file" accept="image/*" onChange=${handleQRUpload} class="hidden" />
+          <input type="file" accept="image/*" onChange=${LMS.safeAction(handleQRUpload)} class="hidden" />
         </label>
         ${(settings || {}).qrCode && html`<img src=${settings.qrCode} alt="QR" style=${qrStyle} />`}
       </div>
@@ -284,7 +251,7 @@ LMS.Settings = ({ onLogout }) => {
 
 
     <!-- 4. Time Shift Management -->
-    <div class="p-4 bg-card rounded-xl border-l-4 border-purple-500 shadow-sm">
+    <div class="p-4 bg-card rounded-xl border-l-4 border-purple-500 shadow-sm settings-shifts">
       <h3 class="font-bold text-purple-700 mb-1">Time Shift Management</h3>
       <p class="text-xs text-gray-400 mb-4">Add or remove library shifts</p>
       
@@ -324,14 +291,7 @@ LMS.Settings = ({ onLogout }) => {
             style=${shiftStyle(shift.name)}>
             ${shift.name} <span class="text-xs opacity-80">(${shift.startTime} - ${shift.endTime})</span>
             <button 
-              onClick=${() => {
-      if (confirm('Delete shift: ' + shift.name + '?')) {
-        setShifts(prev => prev.filter(s => s.id !== shift.id));
-        if (LMS.DB.removeItem) LMS.DB.removeItem('shifts', shift.id);
-        addLog('Deleted shift: ' + shift.name);
-        showToast('Shift deleted!', 'success');
-      }
-    }} 
+              onClick=${() => removeShift(shift)}
               class="ml-1 text-white hover:text-red-200 font-bold bg-transparent border-none cursor-pointer"
             >×</button>
           </span>
@@ -393,8 +353,8 @@ LMS.Settings = ({ onLogout }) => {
       <div class="flex gap-3 flex-wrap mb-4">
         <${Button} onClick=${exportBackup} style=${backupBtnStyle}><${Icons.Download} /> Backup Now</${Button}>
         <label class="cursor-pointer">
-          <span class="btn inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white" style=${importBtnStyle}><${Icons.Upload} /> Import Backup</span>
-          <input type="file" accept=".json" onChange=${importBackup} class="hidden" />
+          <span class="btn inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white" style=${importBtnStyle}><${Icons.Upload} /> ${importing ? 'Importing…' : 'Import Backup'}</span>
+          <input type="file" accept=".json" disabled=${importing} onChange=${importBackup} class="hidden" />
         </label>
         <${Button} variant="secondary" onClick=${() => LMS.exportCSV?.(students, shifts, payments)}><${Icons.Download} /> Export Students CSV</${Button}>
         <${Button} onClick=${fixDuplicates} className="bg-red-500 hover:bg-red-600 text-white"><${Icons.Trash} /> Repair Duplicates</${Button}>

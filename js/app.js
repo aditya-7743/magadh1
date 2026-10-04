@@ -11,7 +11,7 @@ LMS.ThemeToggle = () => {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('lms_theme', isDark ? 'dark' : 'light');
+    try { localStorage.setItem('lms_theme', isDark ? 'dark' : 'light'); } catch {}
   }, [isDark]);
 
   return html`
@@ -26,7 +26,18 @@ LMS.ThemeToggle = () => {
 };
 
 // ==================== TOP NAVIGATION ====================
-LMS.TopNavbar = ({ currentPage, setCurrentPage, onLogout, isMobileOpen, setIsMobileOpen }) => {
+LMS.PAGE_META = {
+  dashboard: ['Overview', 'A clear view of your library, every day.'],
+  students: ['Students', 'People, memberships and payments — all in one place.'],
+  seats: ['Seats & halls', 'Find a space. Keep every seat organised.'],
+  payments: ['Payments', 'Record collections and stay on top of dues.'],
+  accounts: ['Accounts', 'Your income, expenses and financial picture.'],
+  attendance: ['Attendance', 'Keep track of who is here today.'],
+  activity: ['Activity & tasks', 'Your to-dos and a history of library updates.'],
+  alerts: ['Alerts', 'Attendance follow-ups that need your attention.'],
+  settings: ['Settings', 'Make the workspace work for your library.']
+};
+LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpen, setIsMobileOpen = () => {} }) => {
   const { settings, showToast } = useContext(LMS.AppContext);
   const { Icons } = LMS;
 
@@ -34,6 +45,7 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage, onLogout, isMobileOpen, setIsMob
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
     { id: 'students', label: 'Students', icon: Icons.Students },
     { id: 'seats', label: 'Seats & Halls', icon: Icons.Seats },
+    { id: 'payments', label: 'Payments', icon: Icons.Payments },
     { id: 'accounts', label: 'Accounts', icon: Icons.Payments },
     { id: 'attendance', label: 'Attendance', icon: Icons.Log },
     { id: 'activity', label: 'Activity', icon: Icons.Log },
@@ -43,51 +55,45 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage, onLogout, isMobileOpen, setIsMob
 
   const handleNavClick = (id) => {
     setCurrentPage(id);
-    if (window.innerWidth <= 768) setIsMobileOpen(false);
+    setIsMobileOpen(false);
   };
 
   return html`
-    <nav class="navbar glass">
-      <div class="navbar-container">
-        <!-- Mobile Menu Button -->
-        <button class="mobile-menu-btn md:hidden" onClick=${() => setIsMobileOpen(!isMobileOpen)}>
-          <${Icons.Menu} />
-        </button>
-
-        <!-- Logo -->
-        <div class="nav-logo">
-          <div class="logo-icon">📚</div>
-          <div class="logo-text hidden md:block">
-            <h1 style=${{ fontFamily: '"Cinzel", serif', letterSpacing: '0.05em' }} class="text-xl md:text-2xl font-black uppercase text-indigo-400 drop-shadow-md">
-              ${settings.libraryName}
-            </h1>
-          </div>
-        </div>
-
-        <!-- Navigation Links -->
-        <div class="nav-links ${isMobileOpen ? 'open' : ''}">
+    ${isMobileOpen && html`<button class="sidebar-backdrop" aria-label="Close navigation" onClick=${() => setIsMobileOpen(false)}></button>`}
+    <aside class="workspace-sidebar ${isMobileOpen ? 'is-open' : ''}" aria-label="Main navigation" onKeyDown=${e => { if (e.key === 'Escape') setIsMobileOpen(false); }}>
+        <a class="workspace-brand" href="#dashboard" onClick=${e => { e.preventDefault(); handleNavClick('dashboard'); }}>
+          <span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 7h8l3 3 3-3h8v19h-8l-3 2-3-2H5V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M16 10v18M9 12h4M9 16h4M19 12h4M19 16h4" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          <span><strong>${settings.libraryName}</strong><small>Library workspace</small></span>
+        </a>
+        <div class="sidebar-label">WORKSPACE</div>
+        <nav class="workspace-nav">
           ${menuItems.map(item => html`
             <button 
               key=${item.id} 
               onClick=${() => handleNavClick(item.id)}
-              class="nav-link ${currentPage === item.id ? 'active' : ''} click-press"
+              class="workspace-nav-link ${currentPage === item.id ? 'active' : ''}"
+              aria-current=${currentPage === item.id ? 'page' : undefined}
             >
               <${item.icon} />
               <span>${item.label}</span>
+              ${currentPage === item.id && html`<span class="nav-active-dot" aria-hidden="true"></span>`}
             </button>
           `)}
-        </div>
-
-        <!-- Right Side Actions -->
-        <div class="nav-actions">
-           <div class="text-xs text-gray-400 mr-2 hidden md:block"><${LMS.SyncStatus} /></div>
-          <${LMS.ThemeToggle} />
-          <button class="btn btn-ghost btn-sm text-red-500" onClick=${onLogout} title="Logout">
-            <${Icons.Logout} />
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-note"><${Icons.Seats} /><span>A place to focus.<br/><strong>Room to grow.</strong></span></div>
+          <button class="workspace-profile" onClick=${onLogout} title="Sign out">
+            <span class="profile-avatar">A</span><span><strong>Administrator</strong><small>Sign out of workspace</small></span><${Icons.Logout} />
           </button>
         </div>
+    </aside>
+    <header class="workspace-topbar">
+      <div class="topbar-location">
+        <button class="mobile-menu-toggle icon-button" aria-label="Open navigation" aria-expanded=${!!isMobileOpen} onClick=${() => setIsMobileOpen(!isMobileOpen)}><${Icons.Menu} /></button>
+        <span class="breadcrumb-root">Workspace</span><span class="breadcrumb-slash">/</span><strong>${LMS.PAGE_META[currentPage]?.[0]}</strong>
       </div>
-    </nav>
+      <div class="topbar-tools"><span class="sync-pill"><${Icons.Cloud} /><${LMS.SyncStatus} /></span><${LMS.ThemeToggle} /><span class="topbar-avatar" title="Administrator">A</span></div>
+    </header>
   `;
 };
 
@@ -101,195 +107,65 @@ LMS.App = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [admissionRequest, setAdmissionRequest] = useState(0);
+  const [attendanceSettingsRequest, setAttendanceSettingsRequest] = useState(0);
+  const [inspectedStudentId, setInspectedStudentId] = useState(null);
 
-  // Data states
-  // Data states - Initialize from LocalStorage to prevent overwrite
-  const [students, setStudents] = useState(() => LMS.DB.localLoad('students') || []);
-  const [payments, setPayments] = useState(() => LMS.DB.localLoad('payments') || []);
-  const [halls, setHalls] = useState(() => {
-    const loaded = LMS.DB.localLoad('halls');
-    return loaded && loaded.length > 0 ? loaded : LMS.DEFAULT_HALLS;
-  });
-  const [shifts, setShifts] = useState(() => LMS.DB.localLoad('shifts') || LMS.DEFAULT_SHIFTS || []);
-
-  const [settings, setSettings] = useState(() => {
-    const saved = LMS.DB.localLoad('settings');
-    let final = saved ? { ...LMS.DEFAULT_SETTINGS, ...saved } : { ...LMS.DEFAULT_SETTINGS, libraryName: 'MAGADH LIBRARY' };
-    if (final.libraryName === 'My Study Library' || final.libraryName === 'My Study Library Management System') {
-      final.libraryName = 'MAGADH LIBRARY';
-    }
-    return final;
-  });
-
-  const [activityLog, setActivityLog] = useState(() => LMS.DB.localLoad('activityLog') || []);
-  const [pendingWork, setPendingWork] = useState(() => LMS.DB.localLoad('pendingWork') || []);
-  const [expenses, setExpenses] = useState(() => LMS.DB.localLoad('expenses') || []);
-
-
-  // Remote update flag to prevent loops (per key)
-  const isRemoteUpdate = useRef({});
-
-
-
-  // Load data helper
+  const [, redraw] = useState(0);
+  const showToast = useCallback((message, type = 'info') => setToast({ message, type }), []);
   const refreshStateFromLocal = useCallback(() => {
-    const session = LMS.DB.localLoad('session');
-    if (session?.loggedIn) setIsLoggedIn(true);
-
-    if (!LMS.DB.localLoad('owner')) LMS.DB.localSave('owner', { ...LMS.DEFAULT_OWNER, libraryName: 'MAGADH LIBRARY' });
-
-    // Load from local first (instant)
-    setStudents(LMS.DB.localLoad('students') || []);
-    setPayments(LMS.DB.localLoad('payments') || []);
-
-    const loadedHalls = LMS.DB.localLoad('halls');
-    setHalls(loadedHalls && loadedHalls.length > 0 ? loadedHalls : LMS.DEFAULT_HALLS);
-
-    setShifts(LMS.DB.localLoad('shifts') || LMS.DEFAULT_SHIFTS || []);
-    const savedSettings = LMS.DB.localLoad('settings');
-    let finalSettings = savedSettings ? { ...LMS.DEFAULT_SETTINGS, ...savedSettings } : { ...LMS.DEFAULT_SETTINGS, libraryName: 'Data Loading...' };
-
-    // Force update name if it matches old default
-    if (finalSettings.libraryName === 'My Study Library' || finalSettings.libraryName === 'My Study Library Management System') {
-      finalSettings.libraryName = 'MAGADH LIBRARY';
-    }
-    setSettings(finalSettings);
-    setActivityLog(LMS.DB.localLoad('activityLog') || []);
-    setPendingWork(LMS.DB.localLoad('pendingWork') || []);
-    setExpenses(LMS.DB.localLoad('expenses') || []);
-
-
-    setLoading(false);
+    setIsLoggedIn(LMS.Auth.hasSession());
+    redraw(n => n + 1);
   }, []);
-
-  // Initialize Firebase & Data
   useEffect(() => {
-    LMS.DB.init();
-    refreshStateFromLocal();
-
-    const initialSync = async () => {
-      const session = LMS.DB.localLoad('session');
-      if (LMS.DB.isConfigured && session?.loggedIn) {
-        try {
-          await LMS.DB.syncCloudToLocal();
-          refreshStateFromLocal(); // Refresh UI immediately after sync
-        } catch (e) {
-          console.error("Initial sync failed", e);
-        }
-      }
-    };
-    initialSync();
+    const unsubscribe = LMS.DB.subscribe(key => {
+      if (key === 'scope' || key === 'auth') refreshStateFromLocal();
+      else redraw(n => n + 1);
+    });
+    LMS.DB.boot().then(() => { refreshStateFromLocal(); setLoading(false); })
+      .catch(error => { LMS.DB.fail(error); setLoading(false); });
+    const timer = setInterval(() => { refreshStateFromLocal(); }, 60000);
+    return () => { unsubscribe(); clearInterval(timer); };
   }, [refreshStateFromLocal]);
-
-  // REAL-TIME LISTENERS
+  const data = (key, fallback) => LMS.DB.localLoad(key, fallback);
+  const setter = useCallback(key => update => {
+    if (LMS.DB.switching) throw new Error('Wait for the account change to finish before editing.');
+    const old = LMS.DB.localLoad(key, []);
+    const next = typeof update === 'function' ? update(old) : update;
+    LMS.DB.stage(key, next);
+  }, []);
+  const setters = useMemo(() => Object.fromEntries(
+    ['students', 'payments', 'halls', 'shifts', 'settings', 'pendingWork', 'expenses'].map(key => [key, setter(key)])
+  ), [setter]);
+  const students = data('students', []);
+  const storedPayments = data('payments', []), deletedPayments = data('_paymentDeletions', {});
+  const payments = useMemo(() => LMS.allPayments(storedPayments, students), [storedPayments, students, deletedPayments]);
+  const halls = data('halls', LMS.DEFAULT_HALLS), shifts = data('shifts', LMS.DEFAULT_SHIFTS);
+  const settings = { ...LMS.DEFAULT_SETTINGS, ...data('settings', {}) };
+  if (!settings.libraryName || ['Data Loading...', 'My Study Library', 'My Study Library Management System'].includes(settings.libraryName)) settings.libraryName = LMS.DEFAULT_SETTINGS.libraryName;
+  const activityLog = data('activityLog', []), pendingWork = data('pendingWork', []), expenses = data('expenses', []);
+  const setStudents = setters.students, setHalls = setters.halls, setShifts = setters.shifts,
+    setSettings = setters.settings, setPendingWork = setters.pendingWork, setExpenses = setters.expenses;
   useEffect(() => {
-    if (!LMS.DB.isConfigured || !LMS.DB.userId) return;
-
-    // Define listener callbacks
-    const setupListeners = () => {
-      LMS.DB.listen('students', (val) => {
-        if (val) { isRemoteUpdate.current['students'] = true; setStudents(val); }
-      });
-      LMS.DB.listen('payments', (val) => {
-        if (val) { isRemoteUpdate.current['payments'] = true; setPayments(val); }
-      });
-      LMS.DB.listen('halls', (val) => {
-        if (val) { isRemoteUpdate.current['halls'] = true; setHalls(val); }
-      });
-      LMS.DB.listen('shifts', (val) => {
-        if (val) { isRemoteUpdate.current['shifts'] = true; setShifts(val); }
-      });
-      LMS.DB.listen('settings', (val) => {
-        if (val) { isRemoteUpdate.current['settings'] = true; setSettings(val); }
-      });
-      LMS.DB.listen('activityLog', (val) => {
-        if (val) { isRemoteUpdate.current['activityLog'] = true; setActivityLog(val); }
-      });
-      LMS.DB.listen('pendingWork', (val) => {
-        if (val) { isRemoteUpdate.current['pendingWork'] = true; setPendingWork(val); }
-      });
-      LMS.DB.listen('expenses', (val) => {
-        if (val) { isRemoteUpdate.current['expenses'] = true; setExpenses(Array.isArray(val) ? val : Object.values(val)); }
-      });
-    };
-
-    // Delay listeners slightly to allow initial load
-    setTimeout(setupListeners, 1500);
-
-    return () => {
-      LMS.DB.detachAllListeners();
-    };
-  }, [LMS.DB.userId]); // Re-run if user login changes
-
-  // Save data on change (Immediate Local, Debounced Cloud)
-  const saveTimeout = useRef({});
-  const debouncedSave = useCallback((key, data) => {
-    // 1. ALWAYS Save to LocalStorage IMMEDIATELY
-    // This ensures no data loss on refresh/close
-    LMS.DB.localSave(key, data);
-
-    // 2. Handle Remote Updates (Sync Loop Prevention)
-    if (isRemoteUpdate.current[key]) {
-      setTimeout(() => {
-        if (isRemoteUpdate.current) isRemoteUpdate.current[key] = false;
-      }, 500);
-      return; // Stop here, don't sync back to cloud
-    }
-
-    // 3. Debounce Cloud Sync
-    clearTimeout(saveTimeout.current[key]);
-
-    // Only Sync Monolithic Keys automatically
-    // Granular keys (students, etc.) are synced via explicit saveItem actions if needed, 
-    // but here we just handle the monolithic ones that rely on full array overwrite.
-    const monolithicKeys = ['settings', 'owner'];
-
-    if (monolithicKeys.includes(key)) {
-      saveTimeout.current[key] = setTimeout(() => {
-        if (LMS.DB.isConfigured && LMS.DB.userId) {
-          LMS.DB.save(key, data);
-        }
-      }, 1000);
-    }
+    if (loading || !isLoggedIn || LMS.DB.switching || LMS.validDate(settings.attendanceAlerts?.trackingStartedOn)) return;
+    // Persist a baseline once, so missing historical attendance is not treated as absence.
+    setSettings(previous => LMS.validDate(previous.attendanceAlerts?.trackingStartedOn) ? previous : ({ ...previous, attendanceAlerts: {
+      ...LMS.attendanceAlertConfig(previous), trackingStartedOn: LMS.today()
+    } }));
+  }, [loading, isLoggedIn, LMS.DB.scope, LMS.DB.switching, settings.attendanceAlerts?.trackingStartedOn, setSettings]);
+  // Restore archived receipts to the ledger on the next payment mutation.
+  const setPayments = update => setters.payments(typeof update === 'function' ? update(payments) : update);
+  const addLog = useCallback(action => {
+    LMS.DB.stage('activityLog', [{ id: LMS.generateId(), action, timestamp: new Date().toISOString() },
+      ...LMS.DB.localLoad('activityLog', [])]);
   }, []);
-
-  useEffect(() => { debouncedSave('students', students); }, [students]);
-  useEffect(() => { debouncedSave('payments', payments); }, [payments]);
-  useEffect(() => { debouncedSave('halls', halls); }, [halls]);
-  useEffect(() => { debouncedSave('shifts', shifts); }, [shifts]);
-  useEffect(() => { debouncedSave('settings', settings); }, [settings]);
-  // Granular sync managed individually for these:
-  // useEffect(() => { debouncedSave('activityLog', activityLog); }, [activityLog]);
-  // useEffect(() => { debouncedSave('pendingWork', pendingWork); }, [pendingWork]);
-  // useEffect(() => { debouncedSave('expenses', expenses); }, [expenses]);
-
-  const addLog = useCallback((action) => {
-    const newLog = {
-      id: LMS.generateId(), // Ensure ID for granular sync
-      action,
-      timestamp: new Date().toISOString()
-    };
-
-    setActivityLog(prev => [newLog, ...prev].slice(0, 100));
-
-    // Direct Granular Sync
-    if (LMS.DB.saveItem) LMS.DB.saveItem('activityLog_v2', newLog);
-  }, []);
-
-  const showToast = useCallback((message, type = 'info') => {
-    setToast({ message, type });
-  }, []);
-
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    refreshStateFromLocal(); // Ensure data is loaded fresh on login
-    addLog('Owner logged in');
-  };
-
-  const handleLogout = () => {
-    LMS.DB.localRemove('session');
-    setIsLoggedIn(false);
+  const handleLogin = () => { refreshStateFromLocal(); addLog('Owner logged in'); };
+  const handleLogout = async () => {
+    setInspectedStudentId(null);
     addLog('Owner logged out');
+    LMS.Auth.endSession(); setIsLoggedIn(false);
+    await LMS.DB.signOut();
+    LMS.Auth.endSession(); setIsLoggedIn(false);
   };
 
   const contextValue = {
@@ -301,14 +177,21 @@ LMS.App = () => {
     activityLog, addLog,
     pendingWork, setPendingWork,
     expenses, setExpenses,
-    showToast
+    showToast,
+    openStudent: student => setInspectedStudentId(student.id),
+    admissionRequest,
+    dismissAdmissionRequest: () => setAdmissionRequest(0),
+    openNewAdmission: () => { setAdmissionRequest(n => n + 1); setCurrentPage('students'); },
+    attendanceSettingsRequest,
+    dismissAttendanceSettingsRequest: () => setAttendanceSettingsRequest(0),
+    openAttendanceAlertSettings: () => { setAttendanceSettingsRequest(n => n + 1); setCurrentPage('settings'); }
   };
 
   if (loading) {
     return html`<${LMS.AppContext.Provider} value=${contextValue}>
-    <div class="min-h-screen bg-body text-text-dark pb-20 pt-20">
+    <div class="app-shell">
       <${LMS.TopNavbar} currentPage="dashboard" />
-      <main class="container mx-auto px-4">
+      <main class="workspace-main">
         <div class="mb-4 fade-in-up" style=${{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
           <div class="skeleton w-48 h-8"></div>
         </div>
@@ -318,7 +201,7 @@ LMS.App = () => {
     </${LMS.AppContext.Provider}>`;
   }
 
-  if (!isLoggedIn) return html`<${LMS.LoginPage} onLogin=${handleLogin} />`;
+  if (!isLoggedIn) return html`<div><${LMS.SaveStatusPanel} /><${LMS.LoginPage} onLogin=${handleLogin} /></div>`;
 
   const renderPage = () => {
     switch (currentPage) {
@@ -336,7 +219,7 @@ LMS.App = () => {
   };
 
   return html`<${LMS.AppContext.Provider} value=${contextValue}>
-    <div class="min-h-screen bg-body text-text-dark pb-20 pt-20"> <!-- Added padding top/bottom -->
+    <div class="app-shell">
       <${LMS.TopNavbar} 
         currentPage=${currentPage} 
         setCurrentPage=${setCurrentPage} 
@@ -345,19 +228,16 @@ LMS.App = () => {
         setIsMobileOpen=${setIsMobileMenuOpen}
       />
 
-      <main class="container mx-auto px-4" onClick=${() => isMobileMenuOpen && setIsMobileMenuOpen(false)}>
-        <!-- Page Title -->
-        <div class="mb-4 fade-in-up" style=${{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-          <h2 class="text-2xl font-bold text-primary-gradient" style=${{ textTransform: 'capitalize' }}>
-            ${currentPage.replace('-', ' ')}
-          </h2>
-        </div>
-        <div class="page-enter" key=${currentPage}>
+      <main class="workspace-main" id="main-content" onClick=${() => isMobileMenuOpen && setIsMobileMenuOpen(false)}>
+        <h1 class="workspace-page-title">${LMS.PAGE_META[currentPage]?.[0]}</h1>
+        <${LMS.SaveStatusPanel} />
+        <div class="module-content page-enter" data-page=${currentPage} key=${currentPage}>
           ${renderPage()}
         </div>
       </main>
 
       <${LMS.Chatbot} />
+      ${inspectedStudentId && html`<${LMS.StudentInspector} key=${inspectedStudentId} studentId=${inspectedStudentId} onClose=${() => setInspectedStudentId(null)} />`}
       <${LMS.BottomStatusBar} />
       ${toast && html`<${LMS.Toast} message=${toast.message} type=${toast.type} onClose=${() => setToast(null)} />`}
       <${LMS.Screensaver} />
@@ -371,7 +251,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(html`<${LMS.App} />`
 // ==================== SERVICE WORKER REGISTRATION ====================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
       .then(reg => console.log('Service Worker registered: ', reg.scope))
       .catch(err => console.log('Service Worker registration failed: ', err));
   });
