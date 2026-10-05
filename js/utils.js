@@ -30,9 +30,27 @@ LMS.formatPaymentDate = payment => {
   return date + ' · ' + (hours % 12 || 12) + ':' + String(minutes).padStart(2, '0') + (hours < 12 ? ' AM' : ' PM');
 };
 
+// Keep private Accounts events out of activity feeds without deleting saved history.
+LMS.isVisibleActivity = log => {
+  if (!log || typeof log !== 'object') return false;
+  if (log.section === 'accounts') return false;
+  const excludedSections = new Set(['analytics', 'analyticsdashboard', 'expense', 'expenses', 'manageexpenses']);
+  if ([log.section, log.category].some(value => excludedSections.has(String(value || '').toLowerCase().replace(/[\s_-]/g, '')))) return false;
+  return !/^(?:(?:added|deleted|updated|edited|created|removed)\s+expenses?\b|analytics\b|manage expenses\b)/i.test(String(log.action || '').trim());
+};
+
+LMS.accountActivityCategory = log => {
+  if (!log || typeof log !== 'object') return '';
+  const category = String(log.category || '').toLowerCase();
+  if (log.section === 'accounts') return category || 'accounts';
+  if (!LMS.isVisibleActivity(log)) return /analytics/i.test(category + ' ' + (log.action || '')) ? 'analytics' : 'expenses';
+  if (/^(?:(?:added|updated|deleted) payment\b|waived fee\b|reset student & archived payments:)/i.test(String(log.action || '').trim())) return 'collections';
+  return '';
+};
+
 // Record storage/import order is not chronological. Sort a copy before limiting it.
-LMS.latestActivity = (logs, limit) => Object.values(logs || {})
-  .filter(log => log && typeof log === 'object')
+LMS.latestActivity = (logs, limit, predicate = LMS.isVisibleActivity) => Object.values(logs || {})
+  .filter(predicate)
   .map((log, index) => {
     const timestamp = new Date(log.timestamp || 0).getTime();
     return { log, index, timestamp: Number.isFinite(timestamp) ? timestamp : 0 };

@@ -1,7 +1,7 @@
-const CACHE_NAME = 'lms-v48';
+const CACHE_NAME = 'lms-v52';
 const IS_LOCALHOST = ['127.0.0.1', 'localhost', '[::1]'].includes(self.location.hostname);
-const assets = ['config', 'firebase-db', 'store', 'db-core', 'auth', 'utils', 'finance', 'records', 'icons', 'components', 'attendance-alerts', 'sql-migration', 'sql-api', 'sql-db', 'login', 'dashboard', 'students', 'seats', 'payments', 'accounts', 'alerts', 'attendance', 'activity', 'settings', 'chatbot', 'screensaver', 'app'];
-const urls = ['./', './index.html', './styles.css?v=48', './modern.css?v=48', './icon.svg', './manifest.json', ...assets.map(name => './js/' + name + '.js?v=48')];
+const assets = ['config', 'firebase-db', 'store', 'db-core', 'auth', 'utils', 'finance', 'records', 'icons', 'components', 'attendance-alerts', 'sql-migration', 'sql-api', 'sql-db', 'router', 'login', 'dashboard', 'students', 'seats', 'payments', 'accounts', 'dues', 'alerts', 'attendance', 'activity', 'settings', 'chatbot', 'screensaver', 'app'];
+const urls = ['./', './index.html', './styles.css?v=52', './modern.css?v=52', './icon.svg', './manifest.json', ...assets.map(name => './js/' + name + '.js?v=52')];
 const vendors = ['https://cdn.tailwindcss.com', 'https://unpkg.com/react@18/umd/react.production.min.js', 'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js', 'https://unpkg.com/htm@3/dist/htm.js', ...['app', 'database', 'auth'].map(name => 'https://www.gstatic.com/firebasejs/9.23.0/firebase-' + name + '-compat.js')];
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE_NAME);

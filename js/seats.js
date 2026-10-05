@@ -141,8 +141,7 @@ LMS.SeatManagement = () => {
   const [newHall, setNewHall] = useState({ name: '', seatCount: 20 });
   const [viewStudent, setViewStudent] = useState(null);
   const [editStudent, setEditStudent] = useState(null);
-  const [selectedHall, setSelectedHall] = useState(orderedHalls[0]?.id || null);
-  // Removed duplicate selectedHall
+  const [selectedHall, setSelectedHall] = LMS.useRouteParam('hall', orderedHalls[0]?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [assignSeatModal, setAssignSeatModal] = useState({ open: false, seatId: null, seatLabel: null });
   const [studentSearch, setStudentSearch] = useState('');

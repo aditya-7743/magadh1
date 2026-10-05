@@ -1,17 +1,55 @@
-// ==================== ACCOUNTS.JS - Accounts with Dues Filtering & Actions ====================
+// ==================== ACCOUNTS.JS - Collections, Analytics & Expenses ====================
 window.LMS = window.LMS || {};
 
 LMS.Accounts = () => {
-  const { payments, students, setStudents, halls, settings, showToast, expenses, setExpenses, addLog, openStudent } = useContext(LMS.AppContext);
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [error, setError] = useState('');
+  const unlock = async () => {
+    if (unlocking) return;
+    setUnlocking(true); setError('');
+    try {
+      if (await LMS.Auth.confirmAction('Enter your admin password to open Accounts:')) setUnlocked(true);
+      else setError('Accounts remains locked. Try again to unlock.');
+    } catch (failure) { setError(failure.message || 'Could not unlock Accounts.'); }
+    finally { setUnlocking(false); }
+  };
+  if (unlocked) return html`<${LMS.AccountsContent} />`;
+  return html`<section class="card accounts-access-gate">
+    <span class="accounts-access-icon" aria-hidden="true">🔒</span>
+    <h2>Accounts is locked</h2>
+    <p>Unlock once to view collections, analytics and expenses.</p>
+    ${error && html`<p role="alert" class="accounts-access-error">${error}</p>`}
+    <${LMS.Button} onClick=${unlock} disabled=${unlocking}>${unlocking ? 'Unlocking…' : 'Unlock Accounts'}</${LMS.Button}>
+  </section>`;
+};
+
+LMS.AccountsContent = () => {
+  const { payments, showToast, expenses, setExpenses, addLog } = useContext(LMS.AppContext);
+  const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'activity']);
+  const logAccount = (action, category) => addLog(action, { section: 'accounts', category });
+  const toggleCard = (title, visible, setter, category) => {
+    setter(!visible);
+    logAccount(`${visible ? 'Hidden' : 'Shown'} ${title}`, category);
+  };
   const [showToday, setShowToday] = useState(true);
-  const [showMonth, setShowMonth] = useState(false);
-  const [showYear, setShowYear] = useState(false);
-  const [showExpenses, setShowExpenses] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showMonth, setShowMonth] = useState(true);
+  const [showYear, setShowYear] = useState(true);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
   // Expenses & Analytics State
   const [analyticsMode, setAnalyticsMode] = useState('thisMonth'); // 'thisMonth', 'last3', 'last6', 'year', 'month'
   const [analyticsDate, setAnalyticsDate] = useState(LMS.today());
+  const changeAnalyticsMode = value => {
+    setAnalyticsMode(value);
+    const labels = { thisMonth: 'This month', last3: 'Last 3 months', last6: 'Last 6 months', last12: 'Last 12 months', year: 'Specific year', month: 'Specific month' };
+    logAccount('Analytics period: ' + labels[value], 'analytics');
+  };
+  const changeAnalyticsDate = value => {
+    setAnalyticsDate(value);
+    logAccount('Analytics date: ' + value, 'analytics');
+  };
 
   // Chart data computation (replaces window._tempChartData hack)
   const chartComputed = useMemo(() => {
@@ -70,47 +108,6 @@ LMS.Accounts = () => {
   }, [analyticsMode, analyticsDate, payments, expenses]);
 
   const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: LMS.today() });
-  const [paymentModal, setPaymentModal] = useState({ open: false, student: null });
-  const [deactivateStudentId, setDeactivateStudentId] = useState(null);
-  const [deactivatePassword, setDeactivatePassword] = useState('');
-  const [deactivateError, setDeactivateError] = useState('');
-  const [duesFilter, setDuesFilter] = useState({
-    includeInactive: false,
-    search: '',
-    minAmount: '',
-    maxAmount: '',
-    dueSince: '',
-    sortBy: 'dueSince',
-    sortOrder: 'asc'
-  });
-
-  const { Button, Card, Modal, Input, Icons } = LMS;
-
-  const deactivateStudent = students.find(student => student.id === deactivateStudentId);
-  const closeDeactivate = () => {
-    setDeactivateStudentId(null);
-    setDeactivatePassword('');
-    setDeactivateError('');
-  };
-  const handleDeactivate = (event) => {
-    event.preventDefault();
-    if (LMS.DB.switching) return;
-    if (deactivatePassword !== '123') {
-      setDeactivateError('Incorrect password. Please try again.');
-      return;
-    }
-    if (!deactivateStudent || deactivateStudent._deleted || deactivateStudent.isActive === false) {
-      closeDeactivate();
-      showToast('This student is no longer active.', 'error');
-      return;
-    }
-    // Apply the existing inactivity rule to the saved record, not the dues row's derived fields.
-    setStudents(prev => prev.map(student => student.id === deactivateStudentId && student.isActive !== false && !student._deleted ? LMS.setStudentActive(student, false) : student));
-    addLog('Deactivated student: ' + deactivateStudent.name + ' (from Dues List)');
-    closeDeactivate();
-    showToast('Student deactivated & seat released. Previous dues are retained.', 'success');
-  };
-
   // --- EXPENSE HANDLERS ---
   const handleAddExpense = (e) => {
     e.preventDefault();
@@ -124,9 +121,9 @@ LMS.Accounts = () => {
     };
 
     setExpenses(prev => [newExpense, ...prev]);
+    logAccount(`Added expense: ${LMS.formatCurrency(newExpense.amount)} (${newExpense.note}) · ${LMS.formatDate(newExpense.date)}`, 'expenses');
 
 
-    addLog(`Added expense: ₹${expenseForm.amount} (${expenseForm.note})`);
     setExpenseForm({ amount: '', note: '', date: LMS.today() });
     showToast('Expense added!', 'success');
   };
@@ -134,9 +131,9 @@ LMS.Accounts = () => {
     if (confirm('Delete this expense entry?')) {
       const exp = expenses.find(e => e.id === id);
       setExpenses(prev => prev.filter(e => e.id !== id));
+      if (exp) logAccount(`Deleted expense: ${LMS.formatCurrency(exp.amount)} (${exp.note}) · ${LMS.formatDate(exp.date)}`, 'expenses');
 
 
-      addLog(`Deleted expense: ₹${exp?.amount || '?'} (${exp?.note || 'unknown'})`);
       showToast('Expense deleted', 'success');
     }
   };
@@ -171,101 +168,36 @@ LMS.Accounts = () => {
   const monthStats = calc(monthPayments);
   const yearStats = calc(yearPayments);
 
-  // Get all due students with financials
-  const dueStudentsList = useMemo(() => {
-    return students.filter(s => LMS.getDueAmount(s, payments) > 0)
-      .map(s => {
-        const fin = LMS.calculateStudentFinancials(s, payments);
-        const seatLabel = s.assignedSeat ? LMS.formatSeatLabel(s.assignedSeat, halls) : null;
-        return { ...s, totalDues: fin.totalDues, paidUntil: fin.paidUntil, dueSince: fin.dueSince, daysDue: fin.daysDue, seatLabel };
-      });
-  }, [students, payments, halls, LMS.today()]);
-
-  // Apply filters and sorting
-  const filteredDues = useMemo(() => {
-    let filtered = dueStudentsList.filter(student => duesFilter.includeInactive || student.isActive !== false);
-
-    // Search filter
-    if (duesFilter.search.trim()) {
-      const lower = duesFilter.search.toLowerCase();
-      filtered = filtered.filter(s =>
-        s.rollNo.toLowerCase().includes(lower) ||
-        s.name.toLowerCase().includes(lower)
-      );
-    }
-
-    // Amount range
-    const min = Number(duesFilter.minAmount) || 0;
-    const max = Number(duesFilter.maxAmount) || Infinity;
-    filtered = filtered.filter(s => s.totalDues >= min && s.totalDues <= max);
-
-    // Due since date
-    if (duesFilter.dueSince) {
-      const filterDate = new Date(duesFilter.dueSince);
-      filterDate.setHours(0, 0, 0, 0);
-      filtered = filtered.filter(s => {
-        if (!s.dueSince) return false;
-        const dsDate = new Date(s.dueSince);
-        dsDate.setHours(0, 0, 0, 0);
-        return dsDate >= filterDate;
-      });
-    }
-
-    // Sort
-    return filtered.sort((a, b) => {
-      let aVal, bVal;
-      if (duesFilter.sortBy === 'totalDues') {
-        aVal = a.totalDues; bVal = b.totalDues;
-      } else if (duesFilter.sortBy === 'name') {
-        aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase();
-      } else { // dueSince
-        aVal = a.paidUntil ? new Date(a.paidUntil) : new Date(0);
-        bVal = b.paidUntil ? new Date(b.paidUntil) : new Date(0);
-      }
-      if (aVal < bVal) return duesFilter.sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return duesFilter.sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [dueStudentsList, duesFilter]);
-
-  const totalDue = filteredDues.reduce((a, s) => a + s.totalDues, 0);
-
-  const getWhatsAppLink = (student) => {
-    const phone = (student.mobile || student.parentMobile || '').replace(/[^0-9]/g, '');
-    if (!phone) return null;
-    const template = settings.whatsappTemplate || 'Dear {name}, your library fee of ₹{due} is due since {dueDate}. Please pay at your earliest. - {library}';
-    const msg = LMS.formatMessage(template, student, settings, payments);
-    return `https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`;
-  };
-
   return html`<div class="space-y-6">
+    <nav class="accounts-tabs" aria-label="Accounts sections">
+      <button class=${tab === 'overview' ? 'active' : ''} aria-current=${tab === 'overview' ? 'page' : undefined} onClick=${() => setTab('overview')}>Overview</button>
+      <button class=${tab === 'activity' ? 'active' : ''} aria-current=${tab === 'activity' ? 'page' : undefined} onClick=${() => setTab('activity')}>Accounts Activity</button>
+    </nav>
+    ${tab === 'activity' ? html`<${LMS.AccountsActivity} />` : html`<div class="space-y-6">
     <!-- Top Row: Collection Cards -->
     <div class="grid md-grid-3 gap-4">
       <${LMS.CollectionCard} 
         title="Today's Collection" 
         stats=${todayStats} 
         isVisible=${showToday} 
-        onToggle=${() => setShowToday(!showToday)}
+        onToggle=${() => toggleCard("Today's Collection", showToday, setShowToday, 'collections')}
         borderColor="#8b5cf6"
-        requiresPassword=${false}
         showToast=${showToast}
       />
       <${LMS.CollectionCard} 
         title="This Month's Collection" 
         stats=${monthStats} 
         isVisible=${showMonth} 
-        onToggle=${() => setShowMonth(!showMonth)}
+        onToggle=${() => toggleCard("This Month's Collection", showMonth, setShowMonth, 'collections')}
         borderColor="#f59e0b"
-        requiresPassword=${true}
         showToast=${showToast}
       />
       <${LMS.CollectionCard} 
         title="This Year's Collection" 
         stats=${yearStats} 
         isVisible=${showYear} 
-        onToggle=${() => setShowYear(!showYear)}
+        onToggle=${() => toggleCard("This Year's Collection", showYear, setShowYear, 'collections')}
         borderColor="#10b981"
-        requiresPassword=${true}
         showToast=${showToast}
       />
     </div>
@@ -278,15 +210,14 @@ LMS.Accounts = () => {
         title="Analytics Dashboard" 
         stats=${{ total: 0, count: 0, cash: 0, online: 0 }} 
         isVisible=${showAnalytics} 
-        onToggle=${() => setShowAnalytics(!showAnalytics)}
+        onToggle=${() => toggleCard('Analytics Dashboard', showAnalytics, setShowAnalytics, 'analytics')}
         borderColor="#3b82f6"
-        requiresPassword=${true}
         showToast=${showToast}
         customContent=${html`
           <div class="space-y-4">
              <!-- Filters -->
              <div class="flex flex-wrap gap-2 items-center bg-blue-50 p-2 rounded-lg">
-               <select class="input-field text-xs py-1" style=${{ width: 'auto' }} value=${analyticsMode} onChange=${e => setAnalyticsMode(e.target.value)}>
+               <select class="input-field text-xs py-1" style=${{ width: 'auto' }} value=${analyticsMode} onChange=${e => changeAnalyticsMode(e.target.value)}>
                  <option value="thisMonth">This Month</option>
                  <option value="last3">Last 3 Months</option>
                  <option value="last6">Last 6 Months</option>
@@ -298,14 +229,16 @@ LMS.Accounts = () => {
                ${analyticsMode === 'year' && html`
                  <input type="number" class="input-field text-xs py-1" style=${{ width: '80px' }} 
                    value=${analyticsDate.split('-')[0]} 
+                   onFocus=${e => { e.currentTarget.dataset.previousYear = e.currentTarget.value; }}
                    onChange=${e => setAnalyticsDate(e.target.value + '-01-01')}
+                   onBlur=${e => { if (e.target.validity.valid && e.target.value && e.target.value !== e.target.dataset.previousYear) changeAnalyticsDate(e.target.value + '-01-01'); }}
                    placeholder="YYYY" min="2020" max="2030" />
                `}
                
                ${analyticsMode === 'month' && html`
                  <input type="month" class="input-field text-xs py-1" style=${{ width: 'auto' }} 
                    value=${analyticsDate.substring(0, 7)} 
-                   onChange=${e => setAnalyticsDate(e.target.value + '-01')} />
+                   onChange=${e => changeAnalyticsDate(e.target.value + '-01')} />
                `}
              </div>
 
@@ -382,9 +315,8 @@ LMS.Accounts = () => {
         title="Manage Expenses" 
         stats=${{ total: 0, count: 0, cash: 0, online: 0 }} 
         isVisible=${showExpenses} 
-        onToggle=${() => setShowExpenses(!showExpenses)}
+        onToggle=${() => toggleCard('Manage Expenses', showExpenses, setShowExpenses, 'expenses')}
         borderColor="#ef4444"
-        requiresPassword=${true}
         showToast=${showToast}
         customContent=${html`
           <div class="space-y-4">
@@ -455,134 +387,40 @@ LMS.Accounts = () => {
       />
     </div>
 
-    <!-- Dues List Section -->
-    <${Card} className="border-l-4 border-pink-500">
-      <div class="flex items-center gap-2 mb-4">
-        <span class="text-pink-500">⚠</span>
-        <h3 class="font-bold text-pink-700 text-lg">Dues List</h3>
-      </div>
-
-      <!-- Filter Section -->
-      <div class="mb-6 p-4 border border-gray-200 rounded-xl bg-gray-50">
-        <h5 class="font-bold text-sm mb-3 text-purple-700">Filter & Sort Dues</h5>
-        <div class="grid grid-2 md-grid-4 gap-4">
-          <input class="input-field" placeholder="Search Name/Roll" value=${duesFilter.search} 
-            onInput=${e => setDuesFilter({ ...duesFilter, search: e.target.value })} />
-          <input class="input-field" type="number" placeholder="Min Due (₹)" value=${duesFilter.minAmount}
-            onInput=${e => setDuesFilter({ ...duesFilter, minAmount: e.target.value })} />
-          <input class="input-field" type="number" placeholder="Max Due (₹)" value=${duesFilter.maxAmount}
-            onInput=${e => setDuesFilter({ ...duesFilter, maxAmount: e.target.value })} />
-          <div>
-            <label class="text-xs text-gray-600 font-semibold">Due Since Date (Min)</label>
-            <input class="input-field" type="date" value=${duesFilter.dueSince}
-              onInput=${e => setDuesFilter({ ...duesFilter, dueSince: e.target.value })} />
-          </div>
-        </div>
-        <div class="flex flex-wrap items-center gap-4 mt-4">
-          <select class="input-field" style=${{ maxWidth: '200px' }} value=${duesFilter.sortBy}
-            onChange=${e => setDuesFilter({ ...duesFilter, sortBy: e.target.value })}>
-            <option value="dueSince">Sort by Due Date</option>
-            <option value="totalDues">Sort by Amount</option>
-            <option value="name">Sort by Name</option>
-          </select>
-          <select class="input-field" style=${{ maxWidth: '150px' }} value=${duesFilter.sortOrder}
-            onChange=${e => setDuesFilter({ ...duesFilter, sortOrder: e.target.value })}>
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </select>
-          <label class="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked=${duesFilter.includeInactive} onChange=${event => setDuesFilter(previous => ({ ...previous, includeInactive: event.target.checked }))} />
-            Show inactive students
-          </label>
-        </div>
-      </div>
-
-      <!-- Dues Table -->
-      <div class="overflow-x-auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Roll</th>
-              <th>Name (Seat)</th>
-              <th>Mobile</th>
-              <th>Due Amount</th>
-              <th>Valid Till</th>
-              <th>Days Due</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filteredDues.map(s => {
-        const highlightClass = s.daysDue >= 90 ? 'bg-yellow-50' : '';
-        const waLink = getWhatsAppLink(s);
-        return html`
-                <tr key=${s.id} class=${highlightClass + ' student-open-target'} tabIndex="0" onClick=${event => LMS.studentCardClick(event, s, openStudent)} onKeyDown=${event => LMS.studentCardKeyDown(event, s, openStudent)}>
-                  <td class="mono font-bold text-purple-700">${s.rollNo}</td>
-                  <td>
-                    <span class="font-semibold">${s.name}</span>
-                    ${s.seatLabel && html`<span class="text-purple-600 ml-1">(${s.seatLabel})</span>`}
-                  </td>
-                  <td class="mono text-gray-600">${s.mobile || '-'}</td>
-                  <td class="text-red-600 font-black text-lg">₹${s.totalDues}</td>
-                  <td class="text-pink-600 font-semibold">${LMS.formatDate(s.paidUntil)} <span class="text-gray-400 text-xs">(${LMS.calculateStudentFinancials(s, payments).paidMonths} months)</span></td>
-                  <td class="text-red-500 font-black">${s.daysDue}</td>
-                  <td>
-                    <div class="dues-row-actions">
-                      <button 
-                        class="text-pink-600 hover:text-pink-800 font-semibold text-sm"
-                        style=${{ background: 'none', border: 'none', cursor: 'pointer' }}
-                        onClick=${() => setPaymentModal({ open: true, student: s })}
-                      >Collect</button>
-                      ${waLink && html`
-                        <a href=${waLink} target="_blank" class="text-green-500 hover:text-green-700 text-lg" title="Send WhatsApp reminder">💬</a>
-                      `}
-                      ${s.isActive === false
-                        ? html`<span class="status-pill inactive">Inactive</span>`
-                        : html`<${Button} size="sm" variant="secondary" className="dues-deactivate-button" onClick=${() => { setDeactivatePassword(''); setDeactivateError(''); setDeactivateStudentId(s.id); }}>Deactivate</${Button}>`}
-                    </div>
-                  </td>
-                </tr>
-              `;
-      })}
-          </tbody>
-        </table>
-        ${filteredDues.length === 0 && html`<p class="text-center py-8 text-gray-400">No dues match the filters.</p>`}
-      </div>
-    </${Card}>
-
-    <${Modal} isOpen=${!!deactivateStudentId} onClose=${closeDeactivate} title="Deactivate student" size="sm">
-      <form class="space-y-4" onSubmit=${LMS.safeAction(handleDeactivate)}>
-        <div class="dues-deactivate-summary">
-          <strong>${deactivateStudent?.name || 'Student'}</strong>
-          <span>Roll: ${deactivateStudent?.rollNo || '—'}</span>
-        </div>
-        <p class="dues-deactivate-help">Their seat will be released and new fees will pause during inactivity. Previous dues and payment history will remain saved.</p>
-        <${Input} label="Deactivation password" type="password" inputMode="numeric" autoComplete="off" autoFocus=${true} required value=${deactivatePassword} error=${deactivateError} onChange=${event => { setDeactivatePassword(event.target.value); setDeactivateError(''); }} />
-        <div class="dues-deactivate-footer">
-          <${Button} type="button" variant="secondary" onClick=${closeDeactivate}>Cancel</${Button}>
-          <${Button} type="submit" variant="danger" disabled=${!deactivatePassword}>Deactivate student</${Button}>
-        </div>
-      </form>
-    </${Modal}>
-
-    <!-- Payment Modal -->
-    <${Modal} isOpen=${paymentModal.open} onClose=${() => setPaymentModal({ open: false, student: null })} title="Collect Payment" size="md">
-      ${paymentModal.student && html`<${LMS.PaymentForm} student=${paymentModal.student} onClose=${() => setPaymentModal({ open: false, student: null })} />`}
-    </${Modal}>
+    </div>`}
   </div>`;
 };
 
+LMS.AccountsActivity = () => {
+  const { activityLog } = useContext(LMS.AppContext);
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const [limit, setLimit] = useState(50);
+  const labels = { collections: 'Collections', expenses: 'Expenses', analytics: 'Analytics', accounts: 'Accounts' };
+  const logs = useMemo(() => LMS.latestActivity(activityLog, undefined, log => {
+    const group = LMS.accountActivityCategory(log);
+    return group && (category === 'all' || category === group) && String(log.action || '').toLowerCase().includes(query.trim().toLowerCase());
+  }), [activityLog, category, query]);
+  return html`<section class="card accounts-activity">
+    <div class="accounts-activity-heading"><div><h2>Accounts Activity</h2><p>Collections, expenses and analytics · newest first</p></div><span>${logs.length} activities</span></div>
+    <div class="accounts-activity-filters">
+      <input type="search" class="input-field" aria-label="Search accounts activity" placeholder="Search accounts activity…" value=${query} onChange=${e => { setQuery(e.target.value); setLimit(50); }} />
+      <select class="input-field" aria-label="Activity category" value=${category} onChange=${e => { setCategory(e.target.value); setLimit(50); }}>
+        <option value="all">All activities</option>
+        ${Object.entries(labels).map(([value, label]) => html`<option key=${value} value=${value}>${label}</option>`)}
+      </select>
+    </div>
+    ${logs.length ? html`<ol class="accounts-activity-list">${logs.slice(0, limit).map(log => {
+      const group = LMS.accountActivityCategory(log);
+      const time = new Date(log.timestamp || '');
+      return html`<li key=${log.id}><span class=${'accounts-activity-badge ' + group}>${labels[group] || 'Accounts'}</span><p>${log.action}</p><time>${Number.isFinite(time.getTime()) ? time.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Time unavailable'}</time></li>`;
+    })}</ol>` : html`<p class="accounts-activity-empty">No matching accounts activity.</p>`}
+    ${logs.length > limit && html`<${LMS.Button} onClick=${() => setLimit(previous => previous + 50)}>Show more</${LMS.Button}>`}
+  </section>`;
+};
+
 // Collection Card Component (Extracted)
-LMS.CollectionCard = ({ title, stats, isVisible, onToggle, borderColor, requiresPassword, customContent, showToast }) => {
-  const handleToggle = async () => {
-    if (!isVisible && requiresPassword) {
-      if (!await LMS.Auth.confirmAction('Enter password to view ' + title + ':')) {
-        showToast('Incorrect password!', 'error');
-        return;
-      }
-    }
-    onToggle();
-  };
+LMS.CollectionCard = ({ title, stats, isVisible, onToggle, borderColor, customContent }) => {
 
   return html`
   <div class="bg-card rounded-xl border-l-4 p-4 shadow-sm" style=${{ borderLeftColor: borderColor }}>
@@ -591,8 +429,8 @@ LMS.CollectionCard = ({ title, stats, isVisible, onToggle, borderColor, requires
         <span class="text-purple-500" style=${{ color: borderColor }}>${customContent ? '📊' : '⟳'}</span>
         <h3 class="font-bold" style=${{ color: borderColor }}>${title}</h3>
       </div>
-      <button onClick=${handleToggle} class="text-gray-400 hover:text-gray-600" style=${{ background: 'none', border: 'none', cursor: 'pointer' }}>
-        ${isVisible ? '👁️' : '🔒'}
+      <button onClick=${onToggle} aria-label=${(isVisible ? 'Hide ' : 'Show ') + title} title=${(isVisible ? 'Hide ' : 'Show ') + title} aria-expanded=${isVisible} class="text-gray-400 hover:text-gray-600" style=${{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        ${isVisible ? html`<${LMS.Icons.Eye} />` : html`<${LMS.Icons.EyeOff} />`}
       </button>
     </div>
     ${isVisible
@@ -613,7 +451,7 @@ LMS.CollectionCard = ({ title, stats, isVisible, onToggle, borderColor, requires
             </div>
           `}
         `)
-      : html`<p class="text-2xl text-gray-400">🔒🔒🔒🔒🔒</p>`
+      : html`<p class="text-sm text-gray-400">Hidden · use the eye button to show</p>`
     }
   </div>
 `;

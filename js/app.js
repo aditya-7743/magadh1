@@ -32,6 +32,7 @@ LMS.PAGE_META = {
   seats: ['Seats & halls', 'Find a space. Keep every seat organised.'],
   payments: ['Payments', 'Record collections and stay on top of dues.'],
   accounts: ['Accounts', 'Your income, expenses and financial picture.'],
+  dues: ['Dues List', 'Outstanding fees and payment follow-ups.'],
   attendance: ['Attendance', 'Keep track of who is here today.'],
   activity: ['Activity & tasks', 'Your to-dos and a history of library updates.'],
   alerts: ['Alerts', 'Attendance follow-ups that need your attention.'],
@@ -47,6 +48,7 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpe
     { id: 'seats', label: 'Seats & Halls', icon: Icons.Seats },
     { id: 'payments', label: 'Payments', icon: Icons.Payments },
     { id: 'accounts', label: 'Accounts', icon: Icons.Payments },
+    { id: 'dues', label: 'Dues List', icon: Icons.Bell },
     { id: 'attendance', label: 'Attendance', icon: Icons.Log },
     { id: 'activity', label: 'Activity', icon: Icons.Log },
     { id: 'alerts', label: 'Alerts', icon: Icons.Log },
@@ -61,23 +63,24 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpe
   return html`
     ${isMobileOpen && html`<button class="sidebar-backdrop" aria-label="Close navigation" onClick=${() => setIsMobileOpen(false)}></button>`}
     <aside class="workspace-sidebar ${isMobileOpen ? 'is-open' : ''}" aria-label="Main navigation" onKeyDown=${e => { if (e.key === 'Escape') setIsMobileOpen(false); }}>
-        <a class="workspace-brand" href="#dashboard" onClick=${e => { e.preventDefault(); handleNavClick('dashboard'); }}>
+        <a class="workspace-brand" href=${LMS.pageUrl('dashboard')} onClick=${e => { if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; e.preventDefault(); handleNavClick('dashboard'); }}>
           <span class="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 7h8l3 3 3-3h8v19h-8l-3 2-3-2H5V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M16 10v18M9 12h4M9 16h4M19 12h4M19 16h4" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span><strong>${settings.libraryName}</strong><small>Library workspace</small></span>
         </a>
         <div class="sidebar-label">WORKSPACE</div>
         <nav class="workspace-nav">
           ${menuItems.map(item => html`
-            <button 
+            <a
               key=${item.id} 
-              onClick=${() => handleNavClick(item.id)}
+              href=${LMS.pageUrl(item.id)}
+              onClick=${e => { if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; e.preventDefault(); handleNavClick(item.id); }}
               class="workspace-nav-link ${currentPage === item.id ? 'active' : ''}"
               aria-current=${currentPage === item.id ? 'page' : undefined}
             >
               <${item.icon} />
               <span>${item.label}</span>
               ${currentPage === item.id && html`<span class="nav-active-dot" aria-hidden="true"></span>`}
-            </button>
+            </a>
           `)}
         </nav>
         <div class="sidebar-bottom">
@@ -103,13 +106,15 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpe
 // ==================== MAIN APP ====================
 LMS.App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const route = LMS.useRoute();
+  const currentPage = route.page, setCurrentPage = LMS.navigatePage;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [admissionRequest, setAdmissionRequest] = useState(0);
   const [attendanceSettingsRequest, setAttendanceSettingsRequest] = useState(0);
   const [inspectedStudentId, setInspectedStudentId] = useState(null);
+  useEffect(() => { setInspectedStudentId(null); setIsMobileMenuOpen(false); }, [currentPage]);
 
   const [, redraw] = useState(0);
   const showToast = useCallback((message, type = 'info') => setToast({ message, type }), []);
@@ -143,6 +148,7 @@ LMS.App = () => {
   const halls = data('halls', LMS.DEFAULT_HALLS), shifts = data('shifts', LMS.DEFAULT_SHIFTS);
   const settings = { ...LMS.DEFAULT_SETTINGS, ...data('settings', {}) };
   if (!settings.libraryName || ['Data Loading...', 'My Study Library', 'My Study Library Management System'].includes(settings.libraryName)) settings.libraryName = LMS.DEFAULT_SETTINGS.libraryName;
+  useEffect(() => { document.title = LMS.PAGE_META[currentPage][0] + ' · ' + settings.libraryName; }, [currentPage, settings.libraryName]);
   const activityLog = data('activityLog', []), pendingWork = data('pendingWork', []), expenses = data('expenses', []);
   const setStudents = setters.students, setHalls = setters.halls, setShifts = setters.shifts,
     setSettings = setters.settings, setPendingWork = setters.pendingWork, setExpenses = setters.expenses;
@@ -155,8 +161,8 @@ LMS.App = () => {
   }, [loading, isLoggedIn, LMS.DB.scope, LMS.DB.switching, settings.attendanceAlerts?.trackingStartedOn, setSettings]);
   // Restore archived receipts to the ledger on the next payment mutation.
   const setPayments = update => setters.payments(typeof update === 'function' ? update(payments) : update);
-  const addLog = useCallback(action => {
-    LMS.DB.stage('activityLog', [{ id: LMS.generateId(), action, timestamp: new Date().toISOString() },
+  const addLog = useCallback((action, details = {}) => {
+    LMS.DB.stage('activityLog', [{ id: LMS.generateId(), action, timestamp: new Date().toISOString(), ...details },
       ...LMS.DB.localLoad('activityLog', [])]);
   }, []);
   const handleLogin = () => { refreshStateFromLocal(); addLog('Owner logged in'); };
@@ -190,7 +196,7 @@ LMS.App = () => {
   if (loading) {
     return html`<${LMS.AppContext.Provider} value=${contextValue}>
     <div class="app-shell">
-      <${LMS.TopNavbar} currentPage="dashboard" />
+      <${LMS.TopNavbar} currentPage=${currentPage} />
       <main class="workspace-main">
         <div class="mb-4 fade-in-up" style=${{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
           <div class="skeleton w-48 h-8"></div>
@@ -210,6 +216,7 @@ LMS.App = () => {
       case 'seats': return html`<${LMS.SeatManagement} />`;
       case 'payments': return html`<${LMS.PaymentManagement} />`;
       case 'accounts': return html`<${LMS.Accounts} />`;
+      case 'dues': return html`<${LMS.Dues} />`;
       case 'alerts': return html`<${LMS.Alerts} />`;
       case 'attendance': return html`<${LMS.Attendance} />`;
       case 'activity': return html`<${LMS.ActivityLog} />`;

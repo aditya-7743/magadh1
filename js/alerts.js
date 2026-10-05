@@ -5,7 +5,7 @@ LMS.Alerts = () => {
   const { students, setStudents, settings, halls, shifts, addLog, showToast, openStudent, openAttendanceAlertSettings } = useContext(LMS.AppContext);
   const { Button, Input, Modal, Icons } = LMS;
   const { rows, config, today } = LMS.useAttendanceAlerts();
-  const [tab, setTab] = useState('needs');
+  const [tab, setTab] = LMS.useRouteParam('tab', 'needs', ['needs', 'snooze', 'leave']);
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState(null);
   const [until, setUntil] = useState('');
