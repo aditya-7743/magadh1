@@ -81,7 +81,7 @@
       if (this.auth) return true;
       try {
         if (typeof firebase === 'undefined') return false;
-        this.app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+        this.app = firebase.apps.find(app => app.name === '[DEFAULT]') || firebase.initializeApp(FIREBASE_CONFIG);
         this.db = firebase.database(); this.auth = firebase.auth(); this.isConfigured = true;
         this.setupAuthListener(); return true;
       } catch (error) { this.fail(error); return false; }

@@ -3,23 +3,14 @@ window.LMS = window.LMS || {};
 
 LMS.Settings = ({ onLogout }) => {
   const { settings, setSettings, shifts, setShifts, students, setStudents, payments, setPayments, halls, setHalls, activityLog, addLog, showToast } = useContext(LMS.AppContext);
-  const [owner, setOwner] = useState(LMS.DB.localLoad('owner') || LMS.DEFAULT_OWNER);
   const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '' });
 
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    username: (LMS.DB.localLoad('owner') || LMS.DEFAULT_OWNER).username,
-    current: '',
-    new: '',
-    confirm: ''
-  });
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
   const { Button, Card, Modal, Input, Icons } = LMS;
 
   const qrStyle = { width: '60px', height: '60px', objectFit: 'contain' };
   const addBtnStyle = { height: '42px', marginTop: '2px' };
-  const updateBtnStyle = { background: '#3b82f6' };
   const backupBtnStyle = { background: '#ec4899' };
   const importBtnStyle = { background: '#8b5cf6' };
   const dirBtnStyle = { background: '#22c55e' };
@@ -55,22 +46,6 @@ LMS.Settings = ({ onLogout }) => {
     setStudents(previous => previous.map(s => s.shift === shift.id ? { ...s, shift: '' } : s));
     setShifts(previous => previous.filter(s => s.id !== shift.id));
     addLog('Deleted shift: ' + shift.name); showToast('Shift removed', 'success');
-  };
-
-  const updateProfile = async () => {
-    try {
-      const old = LMS.DB.localLoad('owner') || {};
-      const authenticated = passwordForm.current ? await LMS.Auth.verify(passwordForm.current) : await LMS.Auth.verifyGoogle();
-      if (!authenticated) throw new Error('Admin authentication failed.');
-      if (!passwordForm.username.trim()) throw new Error('Username is required.');
-      if (passwordForm.new !== passwordForm.confirm) throw new Error('New passwords do not match.');
-      let updated = { ...LMS.DB.localLoad('owner', {}), username: passwordForm.username.trim() };
-      if (passwordForm.new) updated = await LMS.Auth.withPassword(updated, passwordForm.new);
-      else if (updated.password) updated = await LMS.Auth.withPassword(updated, updated.password, false);
-      await LMS.DB.save('owner', updated); setOwner(updated);
-      setPasswordForm(p => ({ ...p, current: '', new: '', confirm: '' }));
-      addLog('Admin profile updated'); showToast('Profile saved', 'success');
-    } catch (error) { showToast(error.message, 'error'); }
   };
 
   const fixDuplicates = async () => {
@@ -218,21 +193,7 @@ LMS.Settings = ({ onLogout }) => {
   return html`<div class="space-y-6">
     <${LMS.AttendanceAlertSettings} key=${LMS.DB.scope} />
     <${LMS.SqlMigrationPanel} />
-    <!-- 1. Admin Profile Section -->
-    <div class="p-4 bg-card rounded-xl border-l-4 border-blue-500 shadow-sm settings-admin">
-      <h3 class="font-bold text-blue-700 mb-3">Update Admin Profile</h3>
-      <div class="space-y-3">
-        <${Input} label="Username" value=${passwordForm.username} onChange=${e => setPasswordForm(p => ({ ...p, username: e.target.value }))} />
-        <${Input} type="password" label="Current Password (Required)" value=${passwordForm.current} onChange=${e => setPasswordForm(p => ({ ...p, current: e.target.value }))} />
-        <div class="grid grid-2 gap-3">
-            <${Input} type="password" label="New Password (Optional)" value=${passwordForm.new} onChange=${e => setPasswordForm(p => ({ ...p, new: e.target.value }))} />
-            <${Input} type="password" label="Confirm New" value=${passwordForm.confirm} onChange=${e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} />
-        </div>
-        <${Button} onClick=${updateProfile} style=${updateBtnStyle} className="text-white font-bold w-full">
-          Update Profile
-        </${Button}>
-      </div>
-    </div>
+    <${LMS.AccountsSecurity} />
 
     <div class="card p-4"><${Input} label="Library Name" value=${settings.libraryName} onChange=${e => handleSettingChange('libraryName', e.target.value)} /></div>
     <!-- 2. Upload QR Code Section -->

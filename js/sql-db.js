@@ -104,7 +104,7 @@
         }
         for (const [key, value] of grouped) await this.acceptRemote(key, value, scope);
         this.stage('_sqlWatermark', page.next, false); await this.flush();
-      } while (page.items.length === 200);
+      } while (page.hasMore === true || page.hasMore === undefined && page.items.length === 200);
       this.connected = true;
     } finally { pulling = false; this.notify('status'); }
   };

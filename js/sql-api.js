@@ -6,7 +6,7 @@ LMS.SQL_CONFIG = Object.freeze({
   mode: 'sql'
 });
 LMS.SqlApi = {
-  async request(path, { query = {}, signal, method = 'GET', body } = {}) {
+  async request(path, { query = {}, signal, method = 'GET', body, accountsIdentity } = {}) {
     const user = LMS.DB.auth?.currentUser;
     if (!user) throw new Error('Sign in with the library admin Google account.');
     const url = new URL('/api/' + path, LMS.SQL_CONFIG.apiUrl);
@@ -14,6 +14,8 @@ LMS.SqlApi = {
     const send = async refresh => fetch(url, {
       method, signal, cache: 'no-store', credentials: 'omit',
       headers: { Authorization: 'Bearer ' + await user.getIdToken(refresh),
+        ...(LMS.AccountAccess?.headers() || {}),
+        ...(accountsIdentity ? { 'X-Accounts-Identity': accountsIdentity } : {}),
         ...(path === 'session' || !LMS.DB.sqlDataset ? {} : { 'X-Library-Dataset': LMS.DB.sqlDataset }),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -25,6 +27,13 @@ LMS.SqlApi = {
       const messages = {
         SIGN_IN_REQUIRED: 'Sign in with Google.', INVALID_SESSION: 'Please sign in again.',
         ADMIN_ACCESS_REQUIRED: 'This Google account does not have library access.',
+        ACCOUNTS_SIGN_IN_REQUIRED: 'Accounts is locked. Verify your Accounts email again.',
+        ACCOUNTS_VERIFY_AGAIN: 'Verify your Accounts email again to continue.',
+        ACCOUNTS_DEVICE_VERIFY_REQUIRED: 'First verify your Accounts email on this browser/device. Verification lasts 7 days.',
+        ACCOUNTS_PASSWORD_INVALID: 'Username/password is incorrect or the temporary password has expired.',
+        ACCOUNTS_TOO_MANY_ATTEMPTS: 'Too many attempts. Try again after 15 minutes.',
+        ACCOUNTS_PASSWORD_REQUIREMENTS: 'Enter a username and a password with 8–256 characters.',
+        ACCOUNTS_INVALID_EXPIRY: 'Choose a password expiry between 1 hour and 7 days.',
         RECORD_CHANGED: 'Cloud changed this record. Review before overwriting.',
         DATASET_CHANGED: 'The library backup has been replaced. Close old tabs, refresh and sign in again. Previous pending edits are retained separately.',
         ROLL_ALREADY_EXISTS: 'This roll number is already assigned to another student.',
@@ -34,6 +43,7 @@ LMS.SqlApi = {
       };
       const error = new Error(messages[result.error] || ('SQL save could not finish (' + (result.error || response.status) + '). Pending changes remain on this device.'));
       if (result.error === 'DATASET_CHANGED') { LMS.DB.sqlAuthorized = false; LMS.Auth.endSession(); LMS.DB.notify('auth'); }
+      if (result.error === 'ACCOUNTS_SIGN_IN_REQUIRED') LMS.AccountAccess?.clear();
       error.code = result.error; error.status = response.status; throw error;
     }
     // Ignore a response if sign-out/account switching happened while it was in flight.

@@ -1,33 +1,44 @@
 // ==================== ACCOUNTS.JS - Collections, Analytics & Expenses ====================
 window.LMS = window.LMS || {};
 
+LMS.AccountsContext = createContext(null);
 LMS.Accounts = () => {
-  const [unlocked, setUnlocked] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
-  const [error, setError] = useState('');
-  const unlock = async () => {
-    if (unlocking) return;
-    setUnlocking(true); setError('');
-    try {
-      if (await LMS.Auth.confirmAction('Enter your admin password to open Accounts:')) setUnlocked(true);
-      else setError('Accounts remains locked. Try again to unlock.');
-    } catch (failure) { setError(failure.message || 'Could not unlock Accounts.'); }
-    finally { setUnlocking(false); }
+  const session = LMS.useAccountsSession();
+  return session ? html`<${LMS.PrivateAccounts} key=${LMS.DB.scope + session.expiresAt} />` : html`<${LMS.AccountsLogin} />`;
+};
+LMS.PrivateAccounts = () => {
+  const [data, setData] = useState(null), [error, setError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([LMS.AccountAccess.list('expenses'), LMS.AccountAccess.list('activityLog')]).then(([expenses, activityLog]) => {
+      if (!cancelled) setData({ expenses, activityLog });
+    }).catch(e => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, []);
+  const logAccount = async (action, category) => {
+    const row = await LMS.AccountAccess.log(action, category);
+    setData(previous => ({ ...previous, activityLog: [row, ...previous.activityLog] }));
   };
-  if (unlocked) return html`<${LMS.AccountsContent} />`;
-  return html`<section class="card accounts-access-gate">
-    <span class="accounts-access-icon" aria-hidden="true">🔒</span>
-    <h2>Accounts is locked</h2>
-    <p>Unlock once to view collections, analytics and expenses.</p>
-    ${error && html`<p role="alert" class="accounts-access-error">${error}</p>`}
-    <${LMS.Button} onClick=${unlock} disabled=${unlocking}>${unlocking ? 'Unlocking…' : 'Unlock Accounts'}</${LMS.Button}>
-  </section>`;
+  const saveExpense = async (value, before, action) => {
+    const log = { id: crypto.randomUUID(), action, section: 'accounts', category: 'expenses', timestamp: new Date().toISOString() };
+    const result = await LMS.AccountAccess.save([
+      { key: 'expenses', id: value.id, base: before?._rev || JSON.stringify(before || null), value: { ...value, _rev: crypto.randomUUID() } },
+      { key: 'activityLog', id: log.id, base: 'null', value: log }
+    ]);
+    const saved = result.applied.find(change => change.key === 'expenses').value;
+    const savedLog = result.applied.find(change => change.key === 'activityLog').value;
+    setData(previous => ({ expenses: [saved, ...previous.expenses.filter(row => row.id !== saved.id)].filter(row => !row._deleted), activityLog: [savedLog, ...previous.activityLog] }));
+  };
+  if (!data) return html`<section class="card p-4" role="status">${error || 'Loading private Accounts…'}</section>`;
+  return html`<${LMS.AccountsContext.Provider} value=${{ ...data, logAccount, saveExpense }}><${LMS.AccountsContent} /></${LMS.AccountsContext.Provider}>`;
 };
 
 LMS.AccountsContent = () => {
-  const { payments, showToast, expenses, setExpenses, addLog } = useContext(LMS.AppContext);
-  const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'activity']);
-  const logAccount = (action, category) => addLog(action, { section: 'accounts', category });
+  const { payments, showToast } = useContext(LMS.AppContext);
+  const { expenses, logAccount: writeLog, saveExpense } = useContext(LMS.AccountsContext);
+  const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'activity', 'security']);
+  const logAccount = (action, category) => writeLog(action, category).catch(error => showToast(error.message, 'error'));
+  const [expenseBusy, setExpenseBusy] = useState(false);
   const toggleCard = (title, visible, setter, category) => {
     setter(!visible);
     logAccount(`${visible ? 'Hidden' : 'Shown'} ${title}`, category);
@@ -109,8 +120,9 @@ LMS.AccountsContent = () => {
 
   const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: LMS.today() });
   // --- EXPENSE HANDLERS ---
-  const handleAddExpense = (e) => {
+  const handleAddExpense = async (e) => {
     e.preventDefault();
+    if (expenseBusy) return;
     if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0 || !expenseForm.note.trim() || !LMS.validDate(expenseForm.date)) { showToast('Please fill details', 'error'); return; }
 
     const newExpense = {
@@ -120,21 +132,25 @@ LMS.AccountsContent = () => {
       date: expenseForm.date
     };
 
-    setExpenses(prev => [newExpense, ...prev]);
-    logAccount(`Added expense: ${LMS.formatCurrency(newExpense.amount)} (${newExpense.note}) · ${LMS.formatDate(newExpense.date)}`, 'expenses');
-
-
-    setExpenseForm({ amount: '', note: '', date: LMS.today() });
-    showToast('Expense added!', 'success');
+    setExpenseBusy(true);
+    try {
+      await saveExpense(newExpense, null, `Added expense: ${LMS.formatCurrency(newExpense.amount)} (${newExpense.note}) · ${LMS.formatDate(newExpense.date)}`);
+      setExpenseForm({ amount: '', note: '', date: LMS.today() });
+      showToast('Expense added!', 'success');
+    } catch (error) { showToast(error.message, 'error'); }
+    finally { setExpenseBusy(false); }
   };
-  const handleDeleteExpense = (id) => {
+  const handleDeleteExpense = async (id) => {
+    if (expenseBusy) return;
     if (confirm('Delete this expense entry?')) {
       const exp = expenses.find(e => e.id === id);
-      setExpenses(prev => prev.filter(e => e.id !== id));
-      if (exp) logAccount(`Deleted expense: ${LMS.formatCurrency(exp.amount)} (${exp.note}) · ${LMS.formatDate(exp.date)}`, 'expenses');
-
-
-      showToast('Expense deleted', 'success');
+      if (!exp) return;
+      setExpenseBusy(true);
+      try {
+        await saveExpense({ ...exp, _deleted: true }, exp, `Deleted expense: ${LMS.formatCurrency(exp.amount)} (${exp.note}) · ${LMS.formatDate(exp.date)}`);
+        showToast('Expense deleted', 'success');
+      } catch (error) { showToast(error.message, 'error'); }
+      finally { setExpenseBusy(false); }
     }
   };
 
@@ -172,8 +188,10 @@ LMS.AccountsContent = () => {
     <nav class="accounts-tabs" aria-label="Accounts sections">
       <button class=${tab === 'overview' ? 'active' : ''} aria-current=${tab === 'overview' ? 'page' : undefined} onClick=${() => setTab('overview')}>Overview</button>
       <button class=${tab === 'activity' ? 'active' : ''} aria-current=${tab === 'activity' ? 'page' : undefined} onClick=${() => setTab('activity')}>Accounts Activity</button>
+      <button class=${tab === 'security' ? 'active' : ''} aria-current=${tab === 'security' ? 'page' : undefined} onClick=${() => setTab('security')}>Access & password</button>
+      <button onClick=${() => LMS.AccountAccess.logout().catch(error => showToast(error.message, 'error'))}>Lock Accounts</button>
     </nav>
-    ${tab === 'activity' ? html`<${LMS.AccountsActivity} />` : html`<div class="space-y-6">
+    ${tab === 'security' ? html`<${LMS.AccountsSecurity} />` : tab === 'activity' ? html`<${LMS.AccountsActivity} />` : html`<div class="space-y-6">
     <!-- Top Row: Collection Cards -->
     <div class="grid md-grid-3 gap-4">
       <${LMS.CollectionCard} 
@@ -334,7 +352,7 @@ LMS.AccountsContent = () => {
                  <label class="text-[10px] font-bold text-red-400 uppercase">Description</label>
                  <input class="input-field text-sm py-1 h-8" type="text" placeholder="Expense Note" value=${expenseForm.note} onChange=${e => setExpenseForm({ ...expenseForm, note: e.target.value })} />
                </div>
-               <button type="submit" class="btn btn-primary h-8 px-3 flex items-center justify-center bg-red-600 hover:bg-red-700" title="Add Expense">+</button>
+               <button type="submit" disabled=${expenseBusy} class="btn btn-primary h-8 px-3 flex items-center justify-center bg-red-600 hover:bg-red-700" title="Add Expense">+</button>
              </form>
 
              <!-- List: This Month -->
@@ -392,7 +410,7 @@ LMS.AccountsContent = () => {
 };
 
 LMS.AccountsActivity = () => {
-  const { activityLog } = useContext(LMS.AppContext);
+  const { activityLog } = useContext(LMS.AccountsContext);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [limit, setLimit] = useState(50);

@@ -40,6 +40,7 @@ LMS.PAGE_META = {
 };
 LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpen, setIsMobileOpen = () => {} }) => {
   const { settings, showToast } = useContext(LMS.AppContext);
+  const accountsSession = LMS.useAccountsSession();
   const { Icons } = LMS;
 
   const menuItems = [
@@ -69,7 +70,7 @@ LMS.TopNavbar = ({ currentPage, setCurrentPage = () => {}, onLogout, isMobileOpe
         </a>
         <div class="sidebar-label">WORKSPACE</div>
         <nav class="workspace-nav">
-          ${menuItems.map(item => html`
+          ${menuItems.filter(item => item.id !== 'accounts' || accountsSession).map(item => html`
             <a
               key=${item.id} 
               href=${LMS.pageUrl(item.id)}

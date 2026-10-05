@@ -1137,3 +1137,5 @@ tbody tr:hover { background: var(--bg-hover); }
 .accounts-activity-badge.collections { background: #d1fae5; color: #065f46; }
 .accounts-activity-empty { padding: 30px 0; text-align: center; opacity: .7; }
 @media(max-width: 640px) { .accounts-activity { padding: 14px; } .accounts-activity-filters { flex-direction: column; } .accounts-activity-filters select { max-width: none; width: 100%; } .accounts-activity-list li { grid-template-columns: 84px minmax(0, 1fr); gap: 8px; } .accounts-activity-list time { grid-column: 2; white-space: normal; } }
+.accounts-password-login { margin-top: 22px; text-align: left; max-width: 390px; margin-inline: auto; }
+.accounts-password-login summary { font-size: 13px; font-weight: 650; cursor: pointer; margin-bottom: 14px; }
