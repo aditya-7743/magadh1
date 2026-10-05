@@ -34,378 +34,125 @@ LMS.PrivateAccounts = () => {
 };
 
 LMS.AccountsContent = () => {
-  const { payments, showToast } = useContext(LMS.AppContext);
+  const { payments, students, showToast } = useContext(LMS.AppContext);
   const { expenses, logAccount: writeLog, saveExpense } = useContext(LMS.AccountsContext);
   const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'activity', 'security']);
-  const logAccount = (action, category) => writeLog(action, category).catch(error => showToast(error.message, 'error'));
-  const [expenseBusy, setExpenseBusy] = useState(false);
-  const toggleCard = (title, visible, setter, category) => {
-    setter(!visible);
-    logAccount(`${visible ? 'Hidden' : 'Shown'} ${title}`, category);
-  };
-  const [showToday, setShowToday] = useState(true);
-  const [showMonth, setShowMonth] = useState(true);
-  const [showYear, setShowYear] = useState(true);
-  const [showExpenses, setShowExpenses] = useState(true);
-  const [showAnalytics, setShowAnalytics] = useState(true);
-
-  // Expenses & Analytics State
-  const [analyticsMode, setAnalyticsMode] = useState('thisMonth'); // 'thisMonth', 'last3', 'last6', 'year', 'month'
-  const [analyticsDate, setAnalyticsDate] = useState(LMS.today());
-  const changeAnalyticsMode = value => {
-    setAnalyticsMode(value);
-    const labels = { thisMonth: 'This month', last3: 'Last 3 months', last6: 'Last 6 months', last12: 'Last 12 months', year: 'Specific year', month: 'Specific month' };
-    logAccount('Analytics period: ' + labels[value], 'analytics');
-  };
-  const changeAnalyticsDate = value => {
-    setAnalyticsDate(value);
-    logAccount('Analytics date: ' + value, 'analytics');
-  };
-
-  // Chart data computation (replaces window._tempChartData hack)
-  const chartComputed = useMemo(() => {
-    let dataPoints = [];
-    const refDate = new Date(analyticsDate);
-    const now = new Date();
-
-    if (analyticsMode === 'thisMonth') {
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      for (let i = 1; i <= daysInMonth; i++) {
-        dataPoints.push({ d: new Date(now.getFullYear(), now.getMonth(), i), label: i });
-      }
-    } else if (analyticsMode === 'last3') {
-      for (let i = 2; i >= 0; i--) {
-        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-      }
-    } else if (analyticsMode === 'last6') {
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-      }
-    } else if (analyticsMode === 'last12') {
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-      }
-    } else if (analyticsMode === 'year') {
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(refDate.getFullYear(), i, 1);
-        dataPoints.push({ d, label: d.toLocaleString('default', { month: 'short' }) });
-      }
-    } else if (analyticsMode === 'month') {
-      const year = refDate.getFullYear();
-      const month = refDate.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      for (let i = 1; i <= daysInMonth; i++) {
-        const d = new Date(year, month, i);
-        dataPoints.push({ d, label: i });
-      }
+  const today = LMS.today();
+  const [period, setPeriod] = useState('month');
+  const [custom, setCustom] = useState({ from: today.slice(0, 7) + '-01', to: today });
+  const [hidden, setHidden] = useState(false);
+  const [search, setSearch] = useState('');
+  const [limit, setLimit] = useState(20);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const blank = () => ({ amount: '', note: '', date: LMS.today(), category: 'Other' });
+  const [form, setForm] = useState(blank);
+  const noteRef = useRef(null);
+  const categories = ['Rent', 'Electricity', 'Internet', 'Staff', 'Maintenance', 'Supplies', 'Other'];
+  const log = (action, category = 'analytics') => writeLog(action, category).catch(error => showToast(error.message, 'error'));
+  const dateKey = value => String(value || '').slice(0, 10);
+  const range = useMemo(() => {
+    if (period === 'custom') return custom;
+    if (period === 'today') return { from: today, to: today };
+    if (period === 'week') {
+      const d = new Date(today + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 6);
+      return { from: d.toISOString().slice(0, 10), to: today };
     }
-
-    const chartData = dataPoints.map(pt => {
-      const isSamePeriod = (d1, d2) => {
-        if (analyticsMode === 'month' || analyticsMode === 'thisMonth')
-          return d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
-        return d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
-      };
-      const inc = payments.filter(p => isSamePeriod(new Date(p.date), pt.d)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-      const exp = expenses.filter(e => isSamePeriod(new Date(e.date), pt.d)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      return { label: pt.label, income: inc, expense: exp, net: inc - exp };
-    });
-
-    const maxVal = Math.max(100, ...chartData.map(m => Math.max(m.income, m.expense)));
-    return { data: chartData, max: maxVal };
-  }, [analyticsMode, analyticsDate, payments, expenses]);
-
-  const [expenseForm, setExpenseForm] = useState({ amount: '', note: '', date: LMS.today() });
-  // --- EXPENSE HANDLERS ---
-  const handleAddExpense = async (e) => {
-    e.preventDefault();
-    if (expenseBusy) return;
-    if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0 || !expenseForm.note.trim() || !LMS.validDate(expenseForm.date)) { showToast('Please fill details', 'error'); return; }
-
-    const newExpense = {
-      id: LMS.generateId(),
-      amount: Number(expenseForm.amount),
-      note: expenseForm.note,
-      date: expenseForm.date
-    };
-
-    setExpenseBusy(true);
+    if (period === 'year') return { from: today.slice(0, 4) + '-01-01', to: today };
+    return { from: today.slice(0, 7) + '-01', to: today };
+  }, [period, custom.from, custom.to, today]);
+  const validRange = LMS.validDate(range.from) && LMS.validDate(range.to) && range.from <= range.to;
+  const report = useMemo(() => {
+    const within = row => validRange && !row._deleted && dateKey(row.date) >= range.from && dateKey(row.date) <= range.to;
+    const income = payments.filter(within), costs = expenses.filter(within);
+    const sum = rows => rows.reduce((total, row) => total + (Number(row.amount) || 0), 0);
+    const collected = sum(income), spent = sum(costs);
+    const cash = sum(income.filter(row => String(row.method).toLowerCase() === 'cash'));
+    const online = sum(income.filter(row => String(row.method).toLowerCase() === 'online'));
+    const buckets = new Map();
+    const monthly = (new Date(range.to) - new Date(range.from)) / 86400000 > 62;
+    for (const [rows, field] of [[income, 'income'], [costs, 'expense']]) for (const row of rows) {
+      const key = dateKey(row.date).slice(0, monthly ? 7 : 10);
+      if (!buckets.has(key)) buckets.set(key, { key, income: 0, expense: 0 });
+      buckets.get(key)[field] += Number(row.amount) || 0;
+    }
+    const chart = [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
+    return { income, costs, collected, spent, net: collected - spent, cash, online, other: collected - cash - online, chart, max: Math.max(1, ...chart.flatMap(row => [row.income, row.expense])) };
+  }, [payments, expenses, range.from, range.to, validRange]);
+  const visibleExpenses = useMemo(() => report.costs.filter(row => [row.note, row.description, row.category, row.amount].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => dateKey(b.date).localeCompare(dateKey(a.date))), [report, search]);
+  const money = value => hidden ? '••••' : LMS.formatCurrency(value);
+  const selectPeriod = value => { setPeriod(value); setLimit(20); log('Accounts report period: ' + value); };
+  const startEdit = row => {
+    setEditing(row); setForm({ amount: String(row.amount), note: row.note || row.description || '', date: dateKey(row.date), category: row.category || 'Other' });
+    noteRef.current?.focus(); noteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  const save = async e => {
+    e.preventDefault(); if (busy) return;
+    if (!LMS.validDate(form.date) || !Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0 || !form.note.trim()) { showToast('Enter a valid date, amount and description.', 'error'); return; }
+    const value = { ...(editing || {}), id: editing?.id || LMS.generateId(), amount: Number(form.amount), date: form.date, note: form.note.trim(), category: form.category };
+    setBusy(true);
     try {
-      await saveExpense(newExpense, null, `Added expense: ${LMS.formatCurrency(newExpense.amount)} (${newExpense.note}) · ${LMS.formatDate(newExpense.date)}`);
-      setExpenseForm({ amount: '', note: '', date: LMS.today() });
-      showToast('Expense added!', 'success');
-    } catch (error) { showToast(error.message, 'error'); }
-    finally { setExpenseBusy(false); }
+      await saveExpense(value, editing, `${editing ? 'Updated' : 'Added'} expense: ${LMS.formatCurrency(value.amount)} (${value.note}) · ${LMS.formatDate(value.date)}`);
+      setEditing(null); setForm(blank()); showToast('Expense saved.', 'success');
+    } catch (error) { showToast(error.message, 'error'); } finally { setBusy(false); }
   };
-  const handleDeleteExpense = async (id) => {
-    if (expenseBusy) return;
-    if (confirm('Delete this expense entry?')) {
-      const exp = expenses.find(e => e.id === id);
-      if (!exp) return;
-      setExpenseBusy(true);
-      try {
-        await saveExpense({ ...exp, _deleted: true }, exp, `Deleted expense: ${LMS.formatCurrency(exp.amount)} (${exp.note}) · ${LMS.formatDate(exp.date)}`);
-        showToast('Expense deleted', 'success');
-      } catch (error) { showToast(error.message, 'error'); }
-      finally { setExpenseBusy(false); }
-    }
+  const remove = async row => {
+    if (busy || !confirm('Delete this expense entry?')) return;
+    setBusy(true);
+    try {
+      await saveExpense({ ...row, _deleted: true }, row, `Deleted expense: ${LMS.formatCurrency(row.amount)} (${row.note || row.description || ''})`);
+      if (editing?.id === row.id) { setEditing(null); setForm(blank()); }
+      showToast('Expense deleted.', 'success');
+    } catch (error) { showToast(error.message, 'error'); } finally { setBusy(false); }
   };
-
-  // --- STATS CALCS ---
-  const today = new Date();
-  const todayStr = today.toDateString();
-  const thisMonth = today.getMonth();
-  const thisYear = today.getFullYear();
-
-  const todayPayments = payments.filter(p => new Date(p.date).toDateString() === todayStr);
-  const monthPayments = payments.filter(p => { const d = new Date(p.date); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; });
-  const yearPayments = payments.filter(p => new Date(p.date).getFullYear() === thisYear);
-
-  const calc = (list) => ({
-    total: list.reduce((a, p) => a + (Number(p.amount) || 0), 0),
-    cash: list.filter(p => p.method === 'cash').reduce((a, p) => a + (Number(p.amount) || 0), 0),
-    online: list.filter(p => p.method === 'online').reduce((a, p) => a + (Number(p.amount) || 0), 0),
-    count: list.length,
-    breakdown: list.length > 0 ? (() => {
-      const months = {};
-      list.forEach(p => {
-        const d = new Date(p.date);
-        const k = d.toLocaleString('default', { month: 'long' });
-        months[k] = (months[k] || 0) + (Number(p.amount) || 0);
-      });
-      return Object.entries(months).map(([month, total]) => ({ month, total }));
-    })() : null
-  });
-
-  const todayStats = calc(todayPayments);
-  const monthStats = calc(monthPayments);
-  const yearStats = calc(yearPayments);
-
-  return html`<div class="space-y-6">
+  const exportReport = () => {
+    if (!validRange || hidden) return;
+    const people = new Map(students.map(student => [student.id, student]));
+    const rows = [['Date', 'Type', 'Roll', 'Description', 'Method / Category', 'Income', 'Expense']];
+    const entries = [...report.income.map(row => { const student = people.get(row.studentId); return [dateKey(row.date), 'Payment', student?.rollNo || '', student?.name || row.studentId || '', row.method || '', Number(row.amount) || 0, '']; }), ...report.costs.map(row => [dateKey(row.date), 'Expense', '', row.note || row.description || '', row.category || 'Other', '', Number(row.amount) || 0])].sort((a, b) => a[0].localeCompare(b[0]));
+    rows.push(...entries);
+    const cell = value => { let text = String(value); if (/^[\s]*[=+@-]/.test(text)) text = "'" + text; return '"' + text.replace(/"/g, '""') + '"'; };
+    const url = URL.createObjectURL(new Blob(['\ufeff' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a'); a.href = url; a.download = `accounts-${range.from}-to-${range.to}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log(`Exported Accounts report: ${range.from} to ${range.to}`, 'collections');
+  };
+  return html`<div class="accounts-workspace">
+    <header class="accounts-hero"><div><span class="accounts-eyebrow">PRIVATE WORKSPACE</span><h1>Accounts</h1><p>Know what came in, what went out, and what remains.</p></div><button class="accounts-lock" onClick=${() => LMS.AccountAccess.logout().catch(error => showToast(error.message, 'error'))}>Lock Accounts</button></header>
     <nav class="accounts-tabs" aria-label="Accounts sections">
-      <button class=${tab === 'overview' ? 'active' : ''} aria-current=${tab === 'overview' ? 'page' : undefined} onClick=${() => setTab('overview')}>Overview</button>
-      <button class=${tab === 'activity' ? 'active' : ''} aria-current=${tab === 'activity' ? 'page' : undefined} onClick=${() => setTab('activity')}>Accounts Activity</button>
-      <button class=${tab === 'security' ? 'active' : ''} aria-current=${tab === 'security' ? 'page' : undefined} onClick=${() => setTab('security')}>Access & password</button>
-      <button onClick=${() => LMS.AccountAccess.logout().catch(error => showToast(error.message, 'error'))}>Lock Accounts</button>
+      ${[['overview','Overview'],['activity','Accounts Activity'],['security','Access & password']].map(([key, label]) => html`<button key=${key} class=${tab === key ? 'active' : ''} aria-current=${tab === key ? 'page' : undefined} onClick=${() => setTab(key)}>${label}</button>`)}
     </nav>
-    ${tab === 'security' ? html`<${LMS.AccountsSecurity} />` : tab === 'activity' ? html`<${LMS.AccountsActivity} />` : html`<div class="space-y-6">
-    <!-- Top Row: Collection Cards -->
-    <div class="grid md-grid-3 gap-4">
-      <${LMS.CollectionCard} 
-        title="Today's Collection" 
-        stats=${todayStats} 
-        isVisible=${showToday} 
-        onToggle=${() => toggleCard("Today's Collection", showToday, setShowToday, 'collections')}
-        borderColor="#8b5cf6"
-        showToast=${showToast}
-      />
-      <${LMS.CollectionCard} 
-        title="This Month's Collection" 
-        stats=${monthStats} 
-        isVisible=${showMonth} 
-        onToggle=${() => toggleCard("This Month's Collection", showMonth, setShowMonth, 'collections')}
-        borderColor="#f59e0b"
-        showToast=${showToast}
-      />
-      <${LMS.CollectionCard} 
-        title="This Year's Collection" 
-        stats=${yearStats} 
-        isVisible=${showYear} 
-        onToggle=${() => toggleCard("This Year's Collection", showYear, setShowYear, 'collections')}
-        borderColor="#10b981"
-        showToast=${showToast}
-      />
-    </div>
-
-
-    <!-- Analytics & Expenses Row -->
-    <div class="grid md-grid-2 gap-4">
-      <!-- ANALYTICS DASHBOARD -->
-      <${LMS.CollectionCard} 
-        title="Analytics Dashboard" 
-        stats=${{ total: 0, count: 0, cash: 0, online: 0 }} 
-        isVisible=${showAnalytics} 
-        onToggle=${() => toggleCard('Analytics Dashboard', showAnalytics, setShowAnalytics, 'analytics')}
-        borderColor="#3b82f6"
-        showToast=${showToast}
-        customContent=${html`
-          <div class="space-y-4">
-             <!-- Filters -->
-             <div class="flex flex-wrap gap-2 items-center bg-blue-50 p-2 rounded-lg">
-               <select class="input-field text-xs py-1" style=${{ width: 'auto' }} value=${analyticsMode} onChange=${e => changeAnalyticsMode(e.target.value)}>
-                 <option value="thisMonth">This Month</option>
-                 <option value="last3">Last 3 Months</option>
-                 <option value="last6">Last 6 Months</option>
-                 <option value="last12">Last 12 Months (Year)</option>
-                 <option value="month">Specific Month</option>
-                 <option value="year">Specific Year</option>
-               </select>
-               
-               ${analyticsMode === 'year' && html`
-                 <input type="number" class="input-field text-xs py-1" style=${{ width: '80px' }} 
-                   value=${analyticsDate.split('-')[0]} 
-                   onFocus=${e => { e.currentTarget.dataset.previousYear = e.currentTarget.value; }}
-                   onChange=${e => setAnalyticsDate(e.target.value + '-01-01')}
-                   onBlur=${e => { if (e.target.validity.valid && e.target.value && e.target.value !== e.target.dataset.previousYear) changeAnalyticsDate(e.target.value + '-01-01'); }}
-                   placeholder="YYYY" min="2020" max="2030" />
-               `}
-               
-               ${analyticsMode === 'month' && html`
-                 <input type="month" class="input-field text-xs py-1" style=${{ width: 'auto' }} 
-                   value=${analyticsDate.substring(0, 7)} 
-                   onChange=${e => changeAnalyticsDate(e.target.value + '-01')} />
-               `}
-             </div>
-
-             <!-- Chart Area -->
-             <div class="relative pt-6">
-               <h4 class="text-xs font-bold text-gray-400 uppercase mb-2 text-center">
-                 ${analyticsMode === 'thisMonth' ? `Daily Breakdown (${today.toLocaleString('default', { month: 'long' })})` :
-        analyticsMode === 'last3' ? 'Monthly Trend (Last 3 Months)' :
-          analyticsMode === 'last6' ? 'Monthly Trend (Last 6 Months)' :
-            analyticsMode === 'last12' ? 'Monthly Trend (Last 12 Months)' :
-              analyticsMode === 'year' ? `Monthly Breakdown (${analyticsDate.substring(0, 4)})` :
-                `Daily Breakdown (${new Date(analyticsDate).toLocaleString('default', { month: 'long', year: 'numeric' })})`}
-               </h4>
-               
-               <div class="flex h-48 border-b border-gray-200 pb-1">
-                 <!-- Y-Axis Labels -->
-                 <div class="flex flex-col justify-between text-[9px] text-gray-400 pr-2 border-r border-gray-100 h-full py-1 text-right min-w-[30px]">
-                    ${(() => {
-        const maxVal = chartComputed.max;
-
-        return html`
-                        <span>₹${Math.round(maxVal).toLocaleString()}</span>
-                        <span>₹${Math.round(maxVal * 0.75).toLocaleString()}</span>
-                        <span>₹${Math.round(maxVal * 0.5).toLocaleString()}</span>
-                        <span>₹${Math.round(maxVal * 0.25).toLocaleString()}</span>
-                        <span>₹0</span>
-                      `;
-      })()}
-                 </div>
-
-                 <!-- Bars Area -->
-                 <div class="flex-1 flex items-end gap-1 h-full pl-1 overflow-x-auto custom-scrollbar">
-                    ${(() => {
-        const { data, max } = chartComputed;
-        const totalInc = data.reduce((s, c) => s + c.income, 0);
-        const totalExp = data.reduce((s, c) => s + c.expense, 0);
-
-        return html`
-                        ${data.map(d => html`
-                          <div class="flex-1 min-w-[20px] flex flex-col items-center gap-0 group relative h-full justify-end">
-                            <div class="flex gap-0.5 items-end justify-center w-full h-full relative px-[1px]">
-                               ${d.income > 0 && html`<div style=${{ height: (d.income / max * 100) + '%', width: '45%' }} class="bg-green-500 rounded-t-sm opacity-90 hover:opacity-100 transition-all"></div>`}
-                               ${d.expense > 0 && html`<div style=${{ height: (d.expense / max * 100) + '%', width: '45%' }} class="bg-red-500 rounded-t-sm opacity-90 hover:opacity-100 transition-all"></div>`}
-                            </div>
-                            <span class="text-[9px] text-gray-500 font-mono mt-1 whitespace-nowrap overflow-hidden">${d.label}</span>
-                            
-                            <div class="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 bg-gray-900 text-white text-[10px] p-2 rounded shadow-lg whitespace-nowrap z-20 pointer-events-none">
-                              <div class="font-bold border-b border-gray-700 mb-1 pb-1">${analyticsMode.includes('Month') || analyticsMode === 'month' ? 'Day ' : ''}${d.label}</div>
-                              <div class="text-green-300">Income: ₹${d.income}</div>
-                              <div class="text-red-300">Expense: ₹${d.expense}</div>
-                              <div class="font-bold pt-1 mt-1 border-t border-gray-700">Net: ₹${d.income - d.expense}</div>
-                            </div>
-                          </div>
-                        `)}
-
-                        <!-- Summary (Absolute) -->
-                         <div class="absolute top-0 right-0 p-2 bg-white/90 backdrop-blur rounded border shadow-sm text-xs text-right z-10 pointer-events-none">
-                           <div class="font-bold text-gray-600">Period Summary</div>
-                           <div class="text-green-600 font-bold">In: ₹${totalInc.toLocaleString('en-IN')}</div>
-                           <div class="text-red-600 font-bold">Out: ₹${totalExp.toLocaleString('en-IN')}</div>
-                           <div class="text-blue-600 font-black border-t mt-1 pt-1">Net: ₹${(totalInc - totalExp).toLocaleString('en-IN')}</div>
-                         </div>
-                       `;
-      })()}
-                 </div>
-               </div>
-             </div>
-          </div>
-        `}
-      />
-
-      <!-- EXPENSE MANAGEMENT -->
-      <${LMS.CollectionCard} 
-        title="Manage Expenses" 
-        stats=${{ total: 0, count: 0, cash: 0, online: 0 }} 
-        isVisible=${showExpenses} 
-        onToggle=${() => toggleCard('Manage Expenses', showExpenses, setShowExpenses, 'expenses')}
-        borderColor="#ef4444"
-        showToast=${showToast}
-        customContent=${html`
-          <div class="space-y-4">
-             <!-- Add Form -->
-             <form onSubmit=${handleAddExpense} class="flex gap-2 items-end bg-red-50 p-3 rounded-lg border border-red-100">
-               <div class="w-24">
-                 <label class="text-[10px] font-bold text-red-400 uppercase">Date</label>
-                 <input class="input-field text-sm py-1 h-8" type="date" value=${expenseForm.date} onChange=${e => setExpenseForm({ ...expenseForm, date: e.target.value })} />
-               </div>
-               <div class="w-24">
-                 <label class="text-[10px] font-bold text-red-400 uppercase">Amount</label>
-                 <input class="input-field text-sm py-1 h-8" type="number" placeholder="₹" value=${expenseForm.amount} onChange=${e => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
-               </div>
-               <div class="flex-1">
-                 <label class="text-[10px] font-bold text-red-400 uppercase">Description</label>
-                 <input class="input-field text-sm py-1 h-8" type="text" placeholder="Expense Note" value=${expenseForm.note} onChange=${e => setExpenseForm({ ...expenseForm, note: e.target.value })} />
-               </div>
-               <button type="submit" disabled=${expenseBusy} class="btn btn-primary h-8 px-3 flex items-center justify-center bg-red-600 hover:bg-red-700" title="Add Expense">+</button>
-             </form>
-
-             <!-- List: This Month -->
-             <div>
-               <h5 class="text-xs font-bold text-gray-400 uppercase mb-2">Expenses (${today.toLocaleString('default', { month: 'long' })})</h5>
-               <div class="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                 ${expenses
-        .filter(e => {
-          const d = new Date(e.date);
-          return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-        })
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .map(e => html`
-                   <div class="flex justify-between items-center text-sm p-2 bg-white border rounded shadow-sm hover:bg-gray-50 group transition-colors">
-                     <div class="flex items-center gap-3">
-                       <span class="font-mono text-xs text-gray-400 bg-gray-100 px-1 rounded">${LMS.formatDate(e.date)}</span>
-                       <span class="font-medium text-gray-700">${e.note}</span>
-                     </div>
-                     <div class="flex items-center gap-3">
-                       <span class="font-bold text-red-600">₹${Number(e.amount).toLocaleString('en-IN')}</span>
-                       <button class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick=${() => handleDeleteExpense(e.id)} title="Delete">🗑</button>
-                     </div>
-                   </div>
-                 `)}
-                 ${expenses.filter(e => { const d = new Date(e.date); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; }).length === 0 && html`<p class="text-center text-xs text-gray-400 py-4 border-2 border-dashed rounded">No expenses recorded for this month.</p>`}
-               </div>
-             </div>
-             
-             <!-- Totals: Last 3 Months -->
-             <div class="grid grid-2 gap-2 mt-4 pt-4 border-t">
-                <div class="p-2 bg-gray-50 rounded border text-center">
-                   <p class="text-xs text-gray-500">Total Expense (This Month)</p>
-                   <p class="font-bold text-red-600">₹${expenses.filter(e => {
-          const d = new Date(e.date); return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-        }).reduce((s, e) => s + Number(e.amount), 0).toLocaleString('en-IN')}</p>
-                </div>
-                <div class="p-2 bg-red-50 rounded border border-red-100 text-center">
-                   <p class="text-xs text-red-600">Total Expense (Last 3 Months)</p>
-                   <p class="font-bold text-red-700">₹${expenses.filter(e => {
-          const d = new Date(e.date);
-          const tm = new Date(); tm.setDate(1); tm.setMonth(tm.getMonth() - 3);
-          return d >= tm;
-        }).reduce((s, e) => s + Number(e.amount), 0).toLocaleString('en-IN')
-      }</p>
-                </div>
-             </div>
-
-          </div>
-        `}
-      />
-    </div>
-
-    </div>`}
+    ${tab === 'activity' ? html`<${LMS.AccountsActivity} />` : tab === 'security' ? html`<${LMS.AccountsSecurity} />` : html`
+      <section class="accounts-toolbar"><div class="accounts-periods" aria-label="Report period">${[['today','Today'],['week','Last 7 days'],['month','This month'],['year','This year'],['custom','Custom']].map(([key,label]) => html`<button key=${key} aria-pressed=${period === key} class=${period === key ? 'active' : ''} onClick=${() => selectPeriod(key)}>${label}</button>`)}</div><div class="accounts-tools"><button aria-label=${hidden ? 'Show amounts' : 'Hide amounts'} onClick=${() => { setHidden(!hidden); log(hidden ? 'Shown Accounts amounts' : 'Hidden Accounts amounts', 'collections'); }}>${hidden ? html`<${LMS.Icons.Eye} />` : html`<${LMS.Icons.EyeOff} />`}</button><button disabled=${!validRange || hidden} onClick=${exportReport}>Export CSV ↗</button></div>
+        ${period === 'custom' && html`<div class="accounts-dates"><label>From<input type="date" value=${custom.from} onChange=${e => { setCustom(p => ({ ...p, from: e.target.value })); setLimit(20); }} /></label><label>To<input type="date" value=${custom.to} onChange=${e => { setCustom(p => ({ ...p, to: e.target.value })); setLimit(20); }} /></label></div>`}
+      </section>
+      ${!validRange && html`<p role="alert" class="accounts-access-error">Choose valid dates with From before To.</p>`}
+      <p class="accounts-range-caption">${validRange ? `${LMS.formatDate(range.from)} – ${LMS.formatDate(range.to)}` : 'Invalid date range'} · All summaries and lists below use this period.</p>
+      <section class="accounts-kpis">
+        <article class="accounts-kpi income"><span>COLLECTED</span><strong>${money(report.collected)}</strong><small>${report.income.length} payments received</small></article>
+        <article class="accounts-kpi expense"><span>EXPENSES</span><strong>${money(report.spent)}</strong><small>${report.costs.length} expense entries</small></article>
+        <article class=${'accounts-kpi net ' + (report.net < 0 ? 'negative' : '')}><span>NET COLLECTION</span><strong>${money(report.net)}</strong><small>Collected minus recorded expenses</small></article>
+        <article class="accounts-kpi methods"><span>PAYMENT BREAKDOWN</span><div><small>Cash</small><b>${money(report.cash)}</b></div><div><small>Online</small><b>${money(report.online)}</b></div>${report.other !== 0 && html`<div><small>Other</small><b>${money(report.other)}</b></div>`}</article>
+      </section>
+      <div class="accounts-main-grid">
+        <section class="accounts-panel"><div class="accounts-panel-title"><div><h2>Income & expenses</h2><p>Compare movement during your selected period.</p></div><span class="accounts-legend"><i></i> Income <i></i> Expense</span></div>
+          ${hidden ? html`<p class="accounts-empty">Amounts and chart are hidden.</p>` : report.chart.length ? html`<div class="accounts-chart" role="img" aria-label="Income and expense comparison. Each date has labeled amounts.">${report.chart.map(row => html`<div key=${row.key} class="accounts-chart-column" title=${`${row.key}: Income ${LMS.formatCurrency(row.income)}, Expense ${LMS.formatCurrency(row.expense)}`}><div class="accounts-bars"><div class="income" style=${{ height: (row.income / report.max * 100) + '%' }}></div><div class="expense" style=${{ height: (row.expense / report.max * 100) + '%' }}></div></div><small>${row.key.length === 7 ? row.key.slice(5) + '/' + row.key.slice(2,4) : row.key.slice(8) + '/' + row.key.slice(5,7)}</small><span class="accounts-chart-values">${LMS.formatCurrency(row.income)} / ${LMS.formatCurrency(row.expense)}</span></div>`)}</div>` : html`<p class="accounts-empty">No income or expenses in this period.</p>`}
+          <div class="accounts-chart-footer"><span>Expense share of collections</span><strong>${hidden ? '••••' : report.collected > 0 ? Math.round(report.spent / report.collected * 100) + '%' : '—'}</strong></div>
+        </section>
+        <section class="accounts-panel accounts-entry"><div class="accounts-panel-title"><div><h2>${editing ? 'Edit expense' : 'Add an expense'}</h2><p>Keep every outgoing amount accounted for.</p></div><span class="accounts-entry-icon">₹</span></div>
+          <form onSubmit=${save} class="accounts-expense-form"><fieldset disabled=${busy}>
+            <div class="accounts-form-pair"><label>Amount (₹)<input class="input-field" type="number" min="0.01" step="0.01" required placeholder="0.00" value=${form.amount} onChange=${e => setForm(p => ({ ...p, amount: e.target.value }))} /></label><label>Date<input class="input-field" type="date" required value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} /></label></div>
+            <label>Description<input ref=${noteRef} class="input-field" required maxLength="300" placeholder="e.g. Electricity bill — October" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} /></label>
+            <label>Category<select class="input-field" value=${form.category} onChange=${e => setForm(p => ({ ...p, category: e.target.value }))}>${[...new Set([...categories, form.category])].map(category => html`<option key=${category}>${category}</option>`)}</select></label>
+            <div class="accounts-form-actions"><button class="btn btn-primary" type="submit">${busy ? 'Saving…' : editing ? 'Save changes' : '+ Add expense'}</button>${editing && html`<button type="button" class="btn btn-secondary" onClick=${() => { setEditing(null); setForm(blank()); }}>Cancel</button>`}</div>
+          </fieldset></form>
+        </section>
+      </div>
+      <section class="accounts-panel"><div class="accounts-panel-title"><div><h2>Expense ledger <span>${visibleExpenses.length}</span></h2><p>Find, edit and manage expenses for this period.</p></div><input class="input-field accounts-expense-search" type="search" aria-label="Search expenses" placeholder="Search description, category, amount…" value=${search} onChange=${e => { setSearch(e.target.value); setLimit(20); }} /></div>
+        <div class="accounts-table-wrap"><table class="accounts-ledger"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Actions</th></tr></thead><tbody>${visibleExpenses.slice(0,limit).map(row => html`<tr key=${row.id}><td>${LMS.formatDate(row.date)}</td><td>${row.note || row.description || 'Expense'}</td><td><span class="accounts-category">${row.category || 'Other'}</span></td><td class="accounts-expense-amount">${money(row.amount)}</td><td><div class="accounts-row-actions"><button disabled=${busy} onClick=${() => startEdit(row)} aria-label=${'Edit expense ' + (row.note || '')}>Edit</button><button disabled=${busy} onClick=${() => remove(row)} class="danger" aria-label=${'Delete expense ' + (row.note || '')}>Delete</button></div></td></tr>`)}</tbody></table></div>
+        ${!visibleExpenses.length && html`<p class="accounts-empty">${search ? 'No expenses match your search.' : 'No expenses recorded for this period. Add one above or change the dates.'}</p>`}
+        ${visibleExpenses.length > limit && html`<button class="btn btn-secondary" onClick=${() => setLimit(n => n + 20)}>Show more expenses</button>`}
+      </section>
+    `}
   </div>`;
 };
 
