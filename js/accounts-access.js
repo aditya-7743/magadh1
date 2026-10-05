@@ -126,7 +126,7 @@ LMS.AccountsLogin = () => {
 LMS.AccountsSecurity = () => {
   const session = LMS.useAccountsSession();
   const { showToast } = useContext(LMS.AppContext);
-  const [form, setForm] = useState({ username: 'accounts', password: '', confirm: '', hours: '24' });
+  const [form, setForm] = useState({ username: 'accounts', password: '', confirm: '', hours: '720' });
   const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   useEffect(() => { if (session?.username) setForm(previous => ({ ...previous, username: session.username })); }, [session?.username]);
   const save = async e => {
@@ -148,10 +148,10 @@ LMS.AccountsSecurity = () => {
     <form onSubmit=${save} class="space-y-3">
       <${LMS.Input} label="Accounts username" value=${form.username} maxLength="80" onChange=${e => setForm(p => ({ ...p, username: e.target.value }))} required />
       <div class="grid grid-2 gap-3">
-        <${LMS.Input} type="password" label="New temporary password (8+ characters)" autoComplete="new-password" minLength="8" maxLength="256" value=${form.password} onChange=${e => setForm(p => ({ ...p, password: e.target.value }))} required />
+        <${LMS.Input} type="password" label="New temporary password (3+ characters)" autoComplete="new-password" minLength="3" maxLength="256" value=${form.password} onChange=${e => setForm(p => ({ ...p, password: e.target.value }))} required />
         <${LMS.Input} type="password" label="Confirm password" autoComplete="new-password" value=${form.confirm} onChange=${e => setForm(p => ({ ...p, confirm: e.target.value }))} required />
       </div>
-      <label>Password expires after<select class="input-field" value=${form.hours} onChange=${e => setForm(p => ({ ...p, hours: e.target.value }))}><option value="1">1 hour</option><option value="24">1 day</option><option value="72">3 days</option><option value="168">7 days</option></select></label>
+      <label>Password expires after<select class="input-field" value=${form.hours} onChange=${e => setForm(p => ({ ...p, hours: e.target.value }))}><option value="1">1 hour</option><option value="24">1 day</option><option value="72">3 days</option><option value="168">7 days</option><option value="360">15 days</option><option value="720">30 days</option></select></label>
       <p class="text-xs">Saving requires a fresh verification with one of your two approved emails. Changing the password also ends sessions opened with the previous password.</p>
       <${LMS.Button} type="submit" disabled=${busy}>${busy ? 'Saving…' : 'Verify email & save password'}</${LMS.Button}>
     </form>
