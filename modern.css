@@ -1092,3 +1092,19 @@ tbody tr:hover { background: var(--bg-hover); }
   .student-card-grid .directory-actions button, .student-card-grid .directory-actions a { min-height: 36px; min-width: 36px; }
   .student-card-grid .directory-card .payment-preview-actions .icon-button { min-height: 34px; min-width: 32px; }
 }
+
+/* Keep the phone number easy to locate without enlarging the card. */
+.directory-card .directory-phone > button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1.5px solid #c79824;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: var(--text-dark);
+}
+.directory-card .directory-phone > button:hover { border-color: #a9760b; background: #fff3c4; }
+.directory-card .directory-phone > button:focus-visible { outline: 2px solid #a9760b; outline-offset: 2px; }
+[data-theme="dark"] .directory-card .directory-phone > button { border-color: #e8ba4c; background: #352a12; color: #fff2c6; }
+[data-theme="dark"] .directory-card .directory-phone > button:hover { background: #493714; }
