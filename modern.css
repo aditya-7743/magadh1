@@ -1237,3 +1237,39 @@ tbody tr:hover { background: var(--bg-hover); }
 .reservation-seat-heading .reservation-seat-title { grid-column: 1; grid-row: 1; justify-self: start; }
 .reservation-seat-heading .seat-heading-present { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; }
 .reservation-seat-heading .status-pill { grid-column: 3; grid-row: 1; justify-self: end; }
+
+/* Fast, thumb-friendly attendance entry. */
+.attendance-quick-card { align-self: start; }
+.attendance-quick-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.attendance-quick-heading h3 { font-size: 20px; font-weight: 800; margin: 0; }
+.attendance-quick-heading p { margin: 5px 0 0; font-size: 12px; color: var(--text-light); }
+.attendance-today-count { padding: 6px 9px; border-radius: 8px; color: #047857; background: #d1fae5; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.attendance-quick-form { display: grid; gap: 12px; }
+.attendance-quick-date { display: flex; align-items: center; gap: 10px; }
+.attendance-quick-date > label { font-size: 12px; font-weight: 650; }
+.attendance-quick-date input { flex: 1; min-width: 0; min-height: 44px; }
+.attendance-quick-date button { border: 1px solid #b9cfff; border-radius: 8px; color: #2459d8; background: var(--bg-card); padding: 10px; }
+.attendance-date-warning { font-size: 12px; color: #92400e; background: #fef3c7; padding: 8px 10px; border-radius: 8px; margin: 0; }
+.attendance-roll-entry { position: relative; }
+.attendance-roll-entry input { min-height: 62px; font-size: 26px; font-weight: 750; letter-spacing: .035em; padding-right: 52px; }
+.attendance-roll-entry input::placeholder { font-size: 16px; letter-spacing: normal; font-weight: 400; }
+.attendance-roll-entry button { position: absolute; right: 6px; top: 9px; min-height: 44px; min-width: 44px; font-size: 25px; color: var(--text-light); background: transparent; border: 0; cursor: pointer; }
+.attendance-student-preview { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-hover); }
+.attendance-preview-roll { color: #fff; background: #2563eb; border-radius: 7px; font-size: 16px; font-weight: 800; padding: 6px 9px; }
+.attendance-student-preview strong { display: block; font-size: 15px; }
+.attendance-student-preview small { display: block; margin-top: 4px; color: var(--text-light); font-size: 11px; }
+.attendance-roll-suggestions { display: grid; gap: 5px; }
+.attendance-roll-suggestions button { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 9px 12px; text-align: left; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-dark); cursor: pointer; }
+.attendance-roll-suggestions strong { color: #2563eb; }
+.attendance-roll-suggestions span { font-size: 13px; }
+.attendance-roll-suggestions p, .attendance-quick-hint { margin: 0; font-size: 12px; color: var(--text-light); padding: 8px 0; }
+.attendance-quick-actions { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; }
+.attendance-quick-actions button { min-height: 56px; border-radius: 11px; font-size: 17px; font-weight: 800; cursor: pointer; touch-action: manipulation; }
+.attendance-present-action { color: #fff; background: #059669; border: 1px solid #047857; box-shadow: 0 3px 8px #05966922; }
+.attendance-absent-action { color: #be123c; background: #fff1f2; border: 1px solid #fda4af; }
+.attendance-quick-actions button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.attendance-last-mark { border-radius: 9px; padding: 11px; font-size: 12px; }
+.attendance-last-mark.is-present { background: #d1fae5; color: #065f46; }
+.attendance-last-mark.is-absent { background: #ffe4e6; color: #9f1239; }
+.attendance-last-mark small { display: block; margin-top: 5px; font-size: 10px; }
+@media(max-width: 640px) { .attendance-quick-card { padding: 16px !important; } .attendance-quick-date input { font-size: 16px; } .attendance-quick-heading h3 { font-size: 18px; } .attendance-quick-actions { gap: 8px; } }
