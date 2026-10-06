@@ -15,12 +15,25 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
   const [webcamField, setWebcamField] = useState(null); // 'photo' or 'formPhoto'
   const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
   const videoRef = useRef(null);
+  const photoCaptureRef = useRef(null);
+  const formCaptureRef = useRef(null);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraReady, setCameraReady] = useState(false);
 
   const { Button, Input, Select, ImageViewer, Modal } = LMS;
   const { showToast } = useContext(LMS.AppContext);
 
   // WebCam Logic
-  const startWebcam = async (field) => {
+  const startWebcam = (field) => {
+    // Open the native mobile capture picker directly in the user's tap handler.
+    const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (mobile) {
+      const input = field === 'photo' ? photoCaptureRef.current : formCaptureRef.current;
+      if (input) { input.value = ''; input.click(); return; }
+    }
+    setCameraError('');
+    setCameraReady(false);
     setWebcamField(field);
     setShowWebcam(true);
     // Default to front camera initially, or we could remember preference
@@ -31,7 +44,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
   };
 
   const captureWebcam = async () => {
-    if (videoRef.current) {
+    if (videoRef.current?.videoWidth && videoRef.current?.videoHeight) {
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
@@ -58,15 +71,31 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
 
   useEffect(() => {
     if (!showWebcam) return;
+    setCameraReady(false);
+    setCameraError('');
     let cancelled = false, stream;
     (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is unavailable. Use photo upload.');
         try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } }); }
-        catch { stream = await navigator.mediaDevices.getUserMedia({ video: true }); }
+        catch (error) {
+          if (error.name !== 'OverconstrainedError' && error.name !== 'NotFoundError') throw error;
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
         if (cancelled || !videoRef.current) stream.getTracks().forEach(track => track.stop());
         else videoRef.current.srcObject = stream;
-      } catch (error) { if (!cancelled) { showToast(error.message, 'error'); setShowWebcam(false); } }
+      } catch (error) {
+        if (!cancelled) {
+          const message = !window.isSecureContext
+            ? 'Live camera needs HTTPS. Open the secure website, or choose a photo below.'
+            : ['NotAllowedError', 'SecurityError'].includes(error.name)
+              ? 'Camera access is blocked. Allow Camera in browser site settings and phone app permissions, then reopen the camera. You can also choose a photo below.'
+              : error.name === 'NotReadableError'
+                ? 'Camera is busy. Close other camera apps and try again, or choose a photo below.'
+                : 'Camera is unavailable. Choose a photo below, or open this page in Chrome/Safari.';
+          setCameraError(message);
+        }
+      }
     })();
     return () => { cancelled = true; stream?.getTracks().forEach(track => track.stop()); };
   }, [showWebcam, facingMode]);
@@ -88,8 +117,15 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
   const handleChange = (f, v) => setForm(prev => ({ ...prev, [f]: v }));
 
   const handleImageUpload = async (e, field) => {
-    const file = e.target.files[0];
-    if (file) { const c = await LMS.compressImage(file); handleChange(field, c); }
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const c = await LMS.compressImage(file);
+      handleChange(field, c);
+    } catch {
+      showToast('Photo could not be opened. Please try another photo.', 'error');
+    } finally { if ('value' in input) input.value = ''; }
   };
 
   const validate = () => {
@@ -176,6 +212,8 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
       </div>
       
       <!-- Photo Upload Section -->
+      <input ref=${photoCaptureRef} type="file" accept="image/*" capture="user" hidden onChange=${e => handleImageUpload(e, 'photo')} />
+      <input ref=${formCaptureRef} type="file" accept="image/*" capture="environment" hidden onChange=${e => handleImageUpload(e, 'formPhoto')} />
       <div class="flex gap-6 mb-6">
         <!-- Student Photo -->
         <div class="flex flex-col items-center gap-2">
@@ -379,7 +417,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
     <${Modal} isOpen=${showWebcam} onClose=${stopWebcam} title="Take Photo">
       <div class="flex flex-col items-center gap-4">
         <div class="relative w-full">
-            <video ref=${videoRef} autoPlay playsInline class="w-full bg-black rounded-lg" style=${{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none', maxHeight: '60vh' }}></video>
+            <video ref=${videoRef} autoPlay playsInline muted onLoadedData=${() => setCameraReady(true)} class="w-full bg-black rounded-lg" style=${{ display: cameraError ? 'none' : undefined, transform: facingMode === 'user' ? 'scaleX(-1)' : 'none', maxHeight: '60vh' }}></video>
             <button 
                 type="button" 
                 class="absolute bottom-4 right-4 bg-white/80 p-2 rounded-full shadow hover:bg-white" 
@@ -389,9 +427,17 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
                 🔄
             </button>
         </div>
+        ${cameraError && html`<p role="alert">${cameraError}</p>`}
+        <label class="btn btn-secondary">Choose photo / phone camera
+          <input type="file" accept="image/*" class="hidden" onChange=${async e => {
+            if (!e.target.files?.length) return;
+            await handleImageUpload(e, webcamField);
+            stopWebcam();
+          }} />
+        </label>
         <div class="flex gap-4 w-full justify-center">
             <${Button} variant="secondary" onClick=${stopWebcam}>Cancel</${Button}>
-            <${Button} onClick=${captureWebcam} className="w-1/2 justify-center">Capture</${Button}>
+            <${Button} onClick=${LMS.safeAction(captureWebcam)} disabled=${!cameraReady || !!cameraError} className="w-1/2 justify-center">Capture</${Button}>
         </div>
       </div>
     </${Modal}>
