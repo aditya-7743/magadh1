@@ -1273,3 +1273,15 @@ tbody tr:hover { background: var(--bg-hover); }
 .attendance-last-mark.is-absent { background: #ffe4e6; color: #9f1239; }
 .attendance-last-mark small { display: block; margin-top: 5px; font-size: 10px; }
 @media(max-width: 640px) { .attendance-quick-card { padding: 16px !important; } .attendance-quick-date input { font-size: 16px; } .attendance-quick-heading h3 { font-size: 18px; } .attendance-quick-actions { gap: 8px; } }
+
+.attendance-keyboard-bar { display: none; }
+@media (max-width: 640px) {
+  .attendance-keyboard-bar { position: fixed; left: 0; right: 0; height: 72px; z-index: 10000; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-card); border-top: 2px solid #16a34a; box-shadow: 0 -4px 16px #0002; }
+  .attendance-keyboard-bar span { flex: 1; min-width: 0; font-size: 13px; color: var(--text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attendance-keyboard-bar button { flex-shrink: 0; min-width: 132px; min-height: 48px; border: 0; border-radius: 10px; background: #008d45; color: white; font-size: 18px; font-weight: 800; touch-action: manipulation; }
+  .attendance-keyboard-bar button:disabled { opacity: .45; }
+  .attendance-quick-heading { margin-bottom: 10px; }
+  .attendance-quick-heading p { display: none; }
+  .attendance-quick-form { gap: 8px; }
+  .attendance-roll-entry input { min-height: 52px; }
+}

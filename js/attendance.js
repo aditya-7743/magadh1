@@ -11,6 +11,23 @@ LMS.Attendance = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [attRoll, setAttRoll] = useState('');
   const rollInput = useRef(null);
+  const [rollFocused, setRollFocused] = useState(false);
+  const [keyboardBarTop, setKeyboardBarTop] = useState(null);
+  useEffect(() => {
+    if (!rollFocused) return;
+    const viewport = window.visualViewport;
+    const position = () => {
+      const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+      setKeyboardBarTop(bottom - 72);
+      if (window.innerWidth <= 640 && rollInput.current?.getBoundingClientRect().bottom > bottom - 80)
+        rollInput.current.scrollIntoView({ block: 'center', behavior: 'instant' });
+    };
+    position();
+    viewport?.addEventListener('resize', position);
+    viewport?.addEventListener('scroll', position);
+    window.addEventListener('resize', position);
+    return () => { viewport?.removeEventListener('resize', position); viewport?.removeEventListener('scroll', position); window.removeEventListener('resize', position); };
+  }, [rollFocused]);
   const [lastMarked, setLastMarked] = useState(null);
   const finishMark = (student, present) => {
     setLastMarked({ name: student.name, roll: student.rollNo, present, date: selectedDate });
@@ -45,14 +62,15 @@ LMS.Attendance = () => {
     const attStatus = (e.nativeEvent?.submitter || e.submitter)?.value !== 'absent';
     if (!LMS.validDate(selectedDate)) { showToast('Select a valid date.', 'error'); return; }
     if (!attRoll.trim()) { showToast('Please enter a roll number', 'error'); return; }
+    if (attRoll.trim().length > 100 || /[.#$\[\]\/]/.test(attRoll)) { showToast('Enter a valid roll number.', 'error'); return; }
 
     const student = students.find(s => String(s.rollNo || '').toLowerCase() === attRoll.trim().toLowerCase());
 
     if (!student) {
-      if (LMS.DB.sqlMode) { showToast('Roll number not found. Select a registered student first.', 'error'); rollInput.current?.focus(); return; }
       // Unregistered student — ask for name, mark attendance + add to pending work
-      const studentName = prompt(`Student "${attRoll}" not found in system.\n\nEnter student name to mark attendance:`);
-      if (!studentName || !studentName.trim()) return;
+      const enteredName = prompt(`Roll "${attRoll}" is not registered.\nEnter name (optional). Attendance and a Pending Work alert will be saved:`);
+      if (enteredName === null) return;
+      const studentName = enteredName.trim().slice(0, 200) || 'Unregistered student';
 
       // Mark attendance with unreg_ prefix
       const unregKey = 'unreg_' + attRoll.trim().toUpperCase();
@@ -73,7 +91,8 @@ LMS.Attendance = () => {
         date: new Date().toISOString(),
         completed: false
       };
-      setPendingWork(prev => [newWork, ...prev]);
+      newWork.unregisteredRoll = attRoll.trim().toUpperCase();
+      setPendingWork(prev => prev.some(work => !work.completed && work.unregisteredRoll === newWork.unregisteredRoll) ? prev : [newWork, ...prev]);
       addLog(`Attendance: ${studentName.trim()} (Unregistered, Roll: ${attRoll.trim()}) marked ${attStatus ? 'Present' : 'Absent'}`);
       showToast(`${studentName.trim()} marked ${attStatus ? 'Present' : 'Absent'} + Added to Pending Work`, 'success');
       finishMark({ name: studentName.trim(), rollNo: attRoll.trim() }, attStatus);
@@ -195,19 +214,23 @@ LMS.Attendance = () => {
   const unregStudents = getUnregisteredForDate(selectedDate);
 
   return html`<div class="space-y-6">
+    ${rollFocused && keyboardBarTop !== null && ReactDOM.createPortal(html`<div class="attendance-keyboard-bar" style=${{ top: keyboardBarTop + 'px' }} onPointerDown=${e => e.preventDefault()}>
+      <span>${matchedStudent ? matchedStudent.rollNo + ' · ' + matchedStudent.name : attRoll.trim() ? 'New roll: ' + attRoll.trim() : 'Enter roll number'}</span>
+      <button type="submit" form="quick-attendance-form" name="attendanceStatus" value="present" disabled=${!attRoll.trim() || matchedStudent?.isActive === false}>✓ Present</button>
+    </div>`, document.body)}
     <h1 class="text-2xl font-bold text-primary-gradient">📋 Attendance Management</h1>
 
     <div class="grid md-grid-2 gap-6">
       <!-- Mark Attendance Card -->
       <${Card} className="card-primary attendance-quick-card">
         <div class="attendance-quick-heading"><div><h3>Quick attendance</h3><p>Enter roll → tap Present → next student</p></div><span class="attendance-today-count">${getPresentCount(selectedDate)} present</span></div>
-        <form onSubmit=${markAttendance} class="attendance-quick-form">
+        <form id="quick-attendance-form" onSubmit=${markAttendance} class="attendance-quick-form">
           <div class="attendance-quick-date"><label for="quick-attendance-date">Date</label><input id="quick-attendance-date" class="input-field" type="date" required value=${selectedDate} onChange=${e => { setSelectedDate(e.target.value); setLastMarked(null); }} />${selectedDate !== LMS.today() && html`<button type="button" onClick=${() => { setSelectedDate(LMS.today()); setLastMarked(null); }}>Today</button>`}</div>
           ${selectedDate !== LMS.today() && html`<p class="attendance-date-warning">Marking for ${LMS.formatDate(selectedDate)}, not today.</p>`}
           <label class="input-label" for="quick-attendance-roll">Roll number</label>
-          <div class="attendance-roll-entry"><input ref=${rollInput} id="quick-attendance-roll" class="input-field" type="text" inputMode="numeric" enterKeyHint="done" autoComplete="off" autoCorrect="off" spellCheck=${false} placeholder="Enter roll, e.g. 001" value=${attRoll} onInput=${e => setAttRoll(e.target.value)} required />${attRoll && html`<button type="button" aria-label="Clear roll number" onClick=${() => { setAttRoll(''); rollInput.current?.focus(); }}>×</button>`}</div>
-          ${matchedStudent ? html`<div class="attendance-student-preview"><span class="attendance-preview-roll">${matchedStudent.rollNo}</span><div><strong>${matchedStudent.name}</strong><small>${matchedStudent.assignedSeat ? 'Seat ' + LMS.formatSeatLabel(matchedStudent.assignedSeat, halls) : 'No seat assigned'} · ${matchedStudent.isActive === false ? 'Inactive student' : getStudentStatus(matchedStudent.id, selectedDate)}</small></div></div>` : attRoll.trim() ? html`<div class="attendance-roll-suggestions">${rollSuggestions.length ? rollSuggestions.map(student => html`<button key=${student.id} type="button" onClick=${() => { setAttRoll(String(student.rollNo)); rollInput.current?.focus({ preventScroll: true }); }}><strong>${student.rollNo}</strong><span>${student.name}</span></button>`) : html`<p role="status">No matching student. Check the roll number.</p>`}</div>` : html`<p class="attendance-quick-hint">The student’s name and seat will appear here. Enter also marks Present.</p>`}
-          <div class="attendance-quick-actions"><button type="submit" name="attendanceStatus" value="present" disabled=${!matchedStudent || matchedStudent.isActive === false} class="attendance-present-action">✓ Present</button><button type="submit" name="attendanceStatus" value="absent" disabled=${!matchedStudent || matchedStudent.isActive === false} class="attendance-absent-action">✕ Absent</button></div>
+          <div class="attendance-roll-entry"><input ref=${rollInput} onFocus=${() => setRollFocused(true)} onBlur=${() => setRollFocused(false)} id="quick-attendance-roll" class="input-field" type="text" inputMode="numeric" enterKeyHint="done" autoComplete="off" autoCorrect="off" spellCheck=${false} placeholder="Enter roll, e.g. 001" value=${attRoll} onInput=${e => setAttRoll(e.target.value)} required />${attRoll && html`<button type="button" aria-label="Clear roll number" onClick=${() => { setAttRoll(''); rollInput.current?.focus(); }}>×</button>`}</div>
+          ${matchedStudent ? html`<div class="attendance-student-preview"><span class="attendance-preview-roll">${matchedStudent.rollNo}</span><div><strong>${matchedStudent.name}</strong><small>${matchedStudent.assignedSeat ? 'Seat ' + LMS.formatSeatLabel(matchedStudent.assignedSeat, halls) : 'No seat assigned'} · ${matchedStudent.isActive === false ? 'Inactive student' : getStudentStatus(matchedStudent.id, selectedDate)}</small></div></div>` : attRoll.trim() ? html`<div class="attendance-roll-suggestions">${rollSuggestions.length ? rollSuggestions.map(student => html`<button key=${student.id} type="button" onClick=${() => { setAttRoll(String(student.rollNo)); rollInput.current?.focus({ preventScroll: true }); }}><strong>${student.rollNo}</strong><span>${student.name}</span></button>`) : html`<p role="status">Not registered. Tap Present to save attendance and add a Pending Work alert.</p>`}</div>` : html`<p class="attendance-quick-hint">The student’s name and seat will appear here. Enter also marks Present.</p>`}
+          <div class="attendance-quick-actions"><button type="submit" name="attendanceStatus" value="present" disabled=${!attRoll.trim() || matchedStudent?.isActive === false} class="attendance-present-action">✓ Present</button><button type="submit" name="attendanceStatus" value="absent" disabled=${!attRoll.trim() || matchedStudent?.isActive === false} class="attendance-absent-action">✕ Absent</button></div>
           ${lastMarked && html`<div class=${'attendance-last-mark ' + (lastMarked.present ? 'is-present' : 'is-absent')} role="status">${lastMarked.present ? '✓ Present' : '✕ Absent'} · <strong>${lastMarked.roll} — ${lastMarked.name}</strong><small>${LMS.formatDate(lastMarked.date)} · Ready for next roll</small></div>`}
         </form>
       </${Card}>
