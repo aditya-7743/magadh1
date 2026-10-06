@@ -90,13 +90,16 @@
       try {
         if (typeof firebase === 'undefined') return false;
         this.app = firebase.apps.find(app => app.name === '[DEFAULT]') || firebase.initializeApp(FIREBASE_CONFIG);
-        this.db = firebase.database(); this.auth = firebase.auth(); this.isConfigured = true;
+        this.db = this.app.database(); this.auth = this.app.auth(); this.isConfigured = true;
+        this.authPersistence = this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        this.authPersistence.catch(error => this.fail(error));
         this.setupAuthListener(); return true;
       } catch (error) { this.fail(error); return false; }
     },
     setupAuthListener() {
+      this.initialAuth = new Promise(resolve => { this.resolveInitialAuth = resolve; });
       this.auth.onAuthStateChanged(user => {
-        this.authReady = (this.authReady || Promise.resolve()).then(() => this.changeUser(user)).catch(error => this.fail(error));
+        this.authReady = (this.authReady || Promise.resolve()).then(() => this.authPersistence).then(() => this.changeUser(user)).catch(error => this.fail(error)).finally(() => this.resolveInitialAuth?.());
       });
     },
     async changeUser(user) {
@@ -127,6 +130,7 @@
     },
     async signInWithGoogle() {
       if (!this.auth) throw new Error('Google sign-in is unavailable offline.');
+      await this.authPersistence;
       const provider = new firebase.auth.GoogleAuthProvider();
       try {
         const result = await this.auth.signInWithPopup(provider);

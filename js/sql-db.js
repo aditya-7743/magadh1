@@ -17,7 +17,16 @@
   db.boot = async function() {
     await originalOpenScope('sql:signed-out');
     this.init();
-    window.addEventListener('online', () => { this.isOnline = true; this.processOfflineQueue(); });
+    await this.initialAuth;
+    const restoreConnection = () => {
+      if (!this.sqlAuthorized && this.auth?.currentUser && !this.switching) {
+        this.authReady = (this.authReady || Promise.resolve()).then(() => this.changeUser(this.auth.currentUser)).catch(error => this.fail(error));
+        return this.authReady;
+      } else return this.processOfflineQueue();
+    };
+    this.restoreConnection = restoreConnection;
+    window.addEventListener('online', () => { this.isOnline = true; restoreConnection(); });
+    window.addEventListener('focus', restoreConnection);
     window.addEventListener('offline', () => { this.isOnline = false; this.connected = false; this.notify('status'); });
     this.channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('lms-sql-records');
     if (this.channel) this.channel.onmessage = async event => {
@@ -41,9 +50,17 @@
         else await this.syncCloudToLocal();
         this.sqlAuthorized = true;
         this.connected = true;
+        this.error = '';
+        this.connectionErrorCode = null;
         poll = setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine) this.pullSqlChanges().catch(error => this.fail(error)); }, 60000);
       } else { this.sqlDataset = null; await originalOpenScope('sql:signed-out'); }
-    } catch (error) { this.fail(error); LMS.Auth?.endSession(); throw error; }
+    } catch (error) {
+      this.connectionErrorCode = error.code;
+      this.fail(error);
+      // Temporary network/sync failures must not erase the fixed seven-day login.
+      if (['INVALID_SESSION', 'ADMIN_ACCESS_REQUIRED', 'SIGN_IN_REQUIRED'].includes(error.code)) LMS.Auth?.endSession();
+      throw error;
+    }
     finally { this.switching = false; this.notify('scope'); this.notify('auth'); }
     if (user) this.processOfflineQueue();
   };

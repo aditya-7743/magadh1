@@ -24,7 +24,7 @@ LMS.LoginPage = ({ onLogin }) => {
         LMS.DB.auth.getRedirectResult().then(async result => {
             if (!result?.user) return;
             await LMS.DB.authReady;
-            LMS.Auth.startSession('google'); onLogin();
+            LMS.Auth.startSession('google'); await LMS.DB.flush(); onLogin();
         }).catch(error => setError(error.message));
     }, []);
 

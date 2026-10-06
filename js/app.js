@@ -226,6 +226,10 @@ LMS.App = () => {
     </${LMS.AppContext.Provider}>`;
   }
 
+  if (!isLoggedIn && LMS.DB.sqlMode && LMS.DB.auth?.currentUser && !LMS.DB.sqlAuthorized &&
+      !['INVALID_SESSION', 'ADMIN_ACCESS_REQUIRED', 'SIGN_IN_REQUIRED'].includes(LMS.DB.connectionErrorCode)) {
+    return html`<div class="card m-6 space-y-4"><h2>Reconnecting to your library…</h2><p>Your saved login is retained. Check your internet connection and retry.</p><${LMS.SaveStatusPanel} /><button class="btn btn-primary" disabled=${LMS.DB.switching} onClick=${() => LMS.DB.restoreConnection?.()}>Retry connection</button></div>`;
+  }
   if (!isLoggedIn) return html`<div><${LMS.SaveStatusPanel} /><${LMS.LoginPage} onLogin=${handleLogin} /></div>`;
 
   const renderPage = () => {
