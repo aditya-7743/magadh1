@@ -1225,3 +1225,10 @@ tbody tr:hover { background: var(--bg-hover); }
 .seat-presence-note { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--text-light, #425b80); }
 .app-update-notice { position: fixed; z-index: 900; bottom: 70px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-radius: 12px; background: #172554; color: #fff; box-shadow: 0 5px 25px #0003; font-size: 13px; max-width: calc(100vw - 24px); }
 .app-update-notice button { background: #facc15; color: #422006; border: 0; border-radius: 7px; padding: 8px 12px; white-space: nowrap; font-weight: 750; cursor: pointer; }
+/* Presence shares the existing seat header; it adds no separate row. */
+.reservation-seat-heading { flex-wrap: nowrap; gap: 6px; }
+.reservation-seat-heading .reservation-seat-title { flex: 1; min-width: 0; }
+.reservation-seat-heading .seat-heading-present { flex-shrink: 0; align-self: flex-start; margin-top: 5px; padding: 3px 6px; font-size: 10px; }
+.reservation-seat-heading .status-pill { flex-shrink: 0; }
+.seat-reservation .seat-student-link { position: relative; }
+.seat-student-link > .seat-member-present { position: absolute; right: 0; top: 0; margin: 0; font-size: 9px; }
