@@ -39,6 +39,7 @@ LMS.LoginPage = ({ onLogin }) => {
                 throw new Error('Invalid username or password.');
             }
             if (!LMS.Auth.startSession()) throw new Error('Cannot save login session.');
+            await LMS.DB.flush();
             onLogin();
         } catch (error) { setError(error.message); setLoading(false); }
     };
@@ -60,6 +61,7 @@ LMS.LoginPage = ({ onLogin }) => {
             if (!user) return;
             await LMS.DB.authReady;
             if (!LMS.Auth.startSession('google')) throw new Error('Cannot save login session.');
+            await LMS.DB.flush();
             onLogin();
         } catch (error) { setError(error.message); setLoading(false); }
     };

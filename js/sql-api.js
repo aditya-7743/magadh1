@@ -14,7 +14,7 @@ LMS.SqlApi = {
     const send = async refresh => fetch(url, {
       method, signal, cache: 'no-store', credentials: 'omit',
       headers: { Authorization: 'Bearer ' + await user.getIdToken(refresh),
-        ...(LMS.AccountAccess?.headers() || {}),
+        ...(path === 'session' ? {} : await LMS.AccountAccess?.headers() || {}),
         ...(accountsIdentity ? { 'X-Accounts-Identity': accountsIdentity } : {}),
         ...(path === 'session' || !LMS.DB.sqlDataset ? {} : { 'X-Library-Dataset': LMS.DB.sqlDataset }),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },

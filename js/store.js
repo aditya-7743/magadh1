@@ -57,3 +57,32 @@ LMS.Store = {
     });
   }
 };
+
+// Authentication metadata has its own scope and is never part of the sync outbox.
+LMS.LoginStorage = {
+  async read(key, create) {
+    const db = await LMS.Store.open();
+    let legacy = null;
+    try { legacy = localStorage.getItem(key); } catch {}
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('records', 'readwrite');
+      const store = tx.objectStore('records');
+      const request = store.get('device-auth|' + key);
+      let value;
+      request.onsuccess = () => {
+        value = request.result;
+        if (value === undefined) {
+          value = legacy ?? (create ? create() : null);
+          store.put(value, 'device-auth|' + key);
+        }
+      };
+      tx.oncomplete = () => resolve(value);
+      tx.onabort = tx.onerror = () => reject(tx.error || new Error('Cannot read login storage.'));
+    });
+  },
+  async write(key, value) {
+    await LMS.Store.write('device-auth', [{ key, value }]);
+    // A null tombstone prevents old localStorage credentials from being restored.
+    try { localStorage.removeItem(key); } catch {}
+  }
+};

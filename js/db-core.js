@@ -37,6 +37,14 @@
       });
       lists.forEach(key => { if (cache[key]) cache[key] = Object.values(cache[key]).filter(x => !x._deleted); });
       this.cache = cache;
+      // Import the old login once, preserving its original expiry. Never upload it.
+      if (cache.session === undefined) {
+        const name = 'lms_session_' + scope;
+        let session = null;
+        try { session = JSON.parse(localStorage.getItem(name) || sessionStorage.getItem(name) || 'null'); } catch {}
+        await LMS.Store.write(scope, [{ key: 'session', value: session }]);
+        cache.session = session;
+      }
       // One-time localStorage migration; the original source is retained for recovery.
       if (!saved._migrated && scope === 'local') {
         roots.concat('offline_queue').forEach(key => {
@@ -138,26 +146,17 @@
     },
     localLoad(key, fallback = null) {
       key = cleanKey(key);
-      if (key === 'session') {
-        try {
-          const name = 'lms_session_' + this.scope;
-          const saved = localStorage.getItem(name) || sessionStorage.getItem(name);
-          if (saved && !localStorage.getItem(name)) { localStorage.setItem(name, saved); sessionStorage.removeItem(name); }
-          return JSON.parse(saved) || fallback;
-        } catch { return fallback; }
-      }
       return this.cache[key] ?? fallback;
     },
     localSave(key, value) {
       key = cleanKey(key);
       if (key === 'session') {
-        try { localStorage.setItem('lms_session_' + this.scope, JSON.stringify(value)); sessionStorage.removeItem('lms_session_' + this.scope); return true; }
-        catch (error) { this.fail(error); return false; }
+        return this.stage(key, value, false);
       }
       return this.stage(key, value);
     },
     localRemove(key) {
-      if (key === 'session') { localStorage.removeItem('lms_session_' + this.scope); sessionStorage.removeItem('lms_session_' + this.scope); }
+      if (key === 'session') { this.stage(key, null, false); }
       else this.stage(key, null);
     },
     stage(key, value, cloud = true, { trackActivity = true } = {}) {

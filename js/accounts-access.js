@@ -7,15 +7,9 @@ window.LMS = window.LMS || {};
   const secondary = firebase.apps.find(app => app.name === 'accounts-private') || firebase.initializeApp(FIREBASE_CONFIG, 'accounts-private');
   const auth = secondary.auth();
   const ready = auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-  const read = () => { try { return JSON.parse(localStorage.getItem(key()) || 'null'); } catch { return null; } };
-  const device = () => {
-    let value = localStorage.getItem(deviceKey);
-    if (!/^[a-f0-9]{64}$/.test(value || '')) {
-      value = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
-      localStorage.setItem(deviceKey, value);
-    }
-    return value;
-  };
+  const read = async () => JSON.parse(await LMS.LoginStorage.read(key()) || 'null');
+  const device = () => LMS.LoginStorage.read(deviceKey, () =>
+    Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join(''));
   const publish = value => {
     clearTimeout(timer); current = value; currentScope = LMS.DB.scope;
     if (value) timer = setTimeout(() => access.clear(), Math.max(0, new Date(value.expiresAt).getTime() - Date.now()));
@@ -24,20 +18,25 @@ window.LMS = window.LMS || {};
   const access = LMS.AccountAccess = {
     emails: ['adityakr.bihar@gmail.com', 'adityavaiosony@gmail.com'],
     session: () => currentScope === LMS.DB.scope && current && new Date(current.expiresAt) > new Date() ? current : null,
-    headers() {
-      const saved = read();
-      return { 'X-Accounts-Device': device(), ...(saved?.token && new Date(saved.expiresAt) > new Date() ? { 'X-Accounts-Session': saved.token } : {}) };
+    async headers() {
+      const saved = await read();
+      return { 'X-Accounts-Device': await device(), ...(saved?.token && new Date(saved.expiresAt) > new Date() ? { 'X-Accounts-Session': saved.token } : {}) };
     },
-    clear() { localStorage.removeItem(key()); publish(null); auth.signOut().catch(() => {}); },
+    clear() {
+      const name = key(); publish(null); auth.signOut().catch(() => {});
+      return LMS.LoginStorage.write(name, null).catch(error => LMS.DB.fail(error));
+    },
     async refresh() {
       const scope = LMS.DB.scope;
       if (checking?.scope === scope) return checking.promise;
-      const saved = read();
-      if (!saved?.token || new Date(saved.expiresAt) <= new Date()) { this.clear(); return null; }
-      const promise = LMS.SqlApi.request('accounts/session').then(result => {
-        if (scope !== LMS.DB.scope || read()?.token !== saved.token) return null;
+      const saved = await read();
+      if (scope !== LMS.DB.scope) return null;
+      if (!saved?.token || new Date(saved.expiresAt) <= new Date()) { await this.clear(); return null; }
+      const promise = LMS.SqlApi.request('accounts/session').then(async result => {
+        const latest = await read();
+        if (scope !== LMS.DB.scope || latest?.token !== saved.token) return null;
         publish(result); return result;
-      }).catch(error => { if (scope === LMS.DB.scope && read()?.token === saved.token) publish(null); throw error; }).finally(() => { if (checking?.scope === scope) checking = null; });
+      }).catch(error => { if (scope === LMS.DB.scope) publish(null); throw error; }).finally(() => { if (checking?.scope === scope) checking = null; });
       checking = { scope, promise }; return promise;
     },
     async proof() {
@@ -55,7 +54,7 @@ window.LMS = window.LMS || {};
       const accountsIdentity = await this.proof();
       const result = await LMS.SqlApi.request('accounts/login', { method: 'POST', body: {}, accountsIdentity });
       if (scope !== LMS.DB.scope) throw new Error('Library account changed. Sign in again.');
-      localStorage.setItem(key(), JSON.stringify(result));
+      await LMS.LoginStorage.write(key(), JSON.stringify(result));
       checking = null; await this.refresh();
       await auth.signOut();
     },
@@ -63,11 +62,11 @@ window.LMS = window.LMS || {};
       const scope = LMS.DB.scope;
       const result = await LMS.SqlApi.request('accounts/password', { method: 'POST', body: { username, password } });
       if (scope !== LMS.DB.scope) throw new Error('Library account changed. Sign in again.');
-      localStorage.setItem(key(), JSON.stringify(result)); checking = null; await this.refresh();
+      await LMS.LoginStorage.write(key(), JSON.stringify(result)); checking = null; await this.refresh();
     },
     async logout() {
       try { await LMS.SqlApi.request('accounts/logout', { method: 'POST', body: {} }); }
-      finally { this.clear(); }
+      finally { await this.clear(); }
     },
     async profile(body) {
       const accountsIdentity = await this.proof();
