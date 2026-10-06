@@ -1,6 +1,33 @@
 // ==================== SEATS.JS - Seat & Hall Management ====================
 window.LMS = window.LMS || {};
 
+// Daily seat presence is a display layer; the attendance history is never reset.
+LMS.seatPresenceClock = (now = new Date()) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(part => [part.type, part.value]));
+  const seconds = Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second);
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, active: seconds < 21 * 3600, nextChangeMs: ((seconds < 21 * 3600 ? 21 * 3600 : 24 * 3600) - seconds) * 1000 - now.getMilliseconds() + 25 };
+};
+LMS.useSeatPresence = () => {
+  const [revision, update] = useState(0);
+  useEffect(() => {
+    let timer;
+    const refresh = () => {
+      clearTimeout(timer); update(n => n + 1);
+      timer = setTimeout(refresh, LMS.seatPresenceClock().nextChangeMs);
+    };
+    const unsubscribe = LMS.DB.subscribe(key => { if (key === 'attendance' || key === 'scope') refresh(); });
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    refresh();
+    return () => { clearTimeout(timer); unsubscribe(); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
+  return useMemo(() => {
+    const clock = LMS.seatPresenceClock();
+    const day = clock.active ? LMS.DB.localLoad('attendance', {})[clock.day] || {} : {};
+    return new Set(Object.entries(day).filter(([, value]) => value === true).map(([id]) => id));
+  }, [revision, LMS.DB.scope]);
+};
+
 
 // The same capacity editor is used for new and existing halls.
 LMS.HallCapacityFields = ({ hall, onChange }) => {
@@ -36,6 +63,7 @@ LMS.HallCapacityFields = ({ hall, onChange }) => {
 // Graphical Seat Selector Component (Reusable)
 LMS.SeatSelector = ({ onSelect, onClose, initialSeat, readOnly, selectionStudent }) => {
   const { halls, students, payments, shifts } = useContext(LMS.AppContext);
+  const presentStudents = LMS.useSeatPresence();
   const orderedHalls = LMS.orderedHalls(halls);
   const [selectedHall, setSelectedHall] = useState(orderedHalls[0]?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,6 +124,7 @@ LMS.SeatSelector = ({ onSelect, onClose, initialSeat, readOnly, selectionStudent
       const error = readOnly ? '' : LMS.seatAssignmentError(seatId, selectionStudent || {}, students, halls, shifts);
       const disabled = !readOnly && !!error;
       const occupants = LMS.seatOccupants(seatId, students, halls);
+      const presentCount = occupants.filter(student => student.isActive !== false && presentStudents.has(student.id)).length;
       const seat = LMS.resolveSeat(seatId, halls);
       const isSelected = LMS.resolveSeat(initialSeat, halls)?.id === seatId;
       const hasDues = student && LMS.getDueAmount(student, payments) > 0;
@@ -116,10 +145,11 @@ LMS.SeatSelector = ({ onSelect, onClose, initialSeat, readOnly, selectionStudent
               role="button" tabIndex=${readOnly || disabled ? -1 : 0} aria-disabled=${disabled} title=${error || (seat?.shared ? 'Shared seat · separate shifts' : 'Single student seat')} aria-label=${seatLabel + (error ? ' · ' + error : ' available')}
               onKeyDown=${e => { if (!readOnly && !disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect?.(seatId); } }}
               onClick=${() => !readOnly && !disabled && onSelect && onSelect(seatId)}
-              class="seat-selector-tile border rounded-lg p-2 flex flex-col items-center justify-center gap-1 ${isSelected ? 'is-selected' : isOccupied ? (hasDues ? 'seat-is-due' : 'seat-is-paid') : 'seat-is-available'}"
+              class="seat-selector-tile border rounded-lg p-2 flex flex-col items-center justify-center gap-1 ${presentCount ? 'seat-has-presence' : ''} ${isSelected ? 'is-selected' : isOccupied ? (hasDues ? 'seat-is-due' : 'seat-is-paid') : 'seat-is-available'}"
               style=${style}
             >
               <span class="text-sm font-bold ${isSelected ? 'text-white' : (isOccupied ? 'text-gray-500' : 'text-blue-700')}">${seatLabel}</span>
+              ${presentCount > 0 && html`<span class="seat-present-badge">✓ Present${occupants.length > 1 ? ' · ' + presentCount : ''}</span>`}
               <div class="seat-choice-status">
                 <span>${isOccupied ? occupants.length + ' reserved' : seat?.reservable ? 'Free' : 'Not reservable'}</span>
                 ${seat?.shared ? html`<strong class="seat-shared-badge">Shared</strong>` : isOccupied ? html`<span>· Single</span>` : null}
@@ -135,6 +165,7 @@ LMS.SeatSelector = ({ onSelect, onClose, initialSeat, readOnly, selectionStudent
 
 LMS.SeatManagement = () => {
   const { halls, setHalls, students, setStudents, payments, shifts, addLog, showToast, openStudent } = useContext(LMS.AppContext);
+  const presentStudents = LMS.useSeatPresence();
   const orderedHalls = LMS.orderedHalls(halls);
 
   const [showHallForm, setShowHallForm] = useState(false);
@@ -324,15 +355,18 @@ LMS.SeatManagement = () => {
           const canAssign = reservable && (!occupants.length || (shared && openShifts.length > 0));
           const members = occupants.map(student => ({ student, shift: shifts.find(s => s.id === student.shift), fin: LMS.calculateStudentFinancials(student, payments) }));
           const daysDue = Math.max(0, ...members.map(({ fin }) => fin.daysDue));
-          return html`<article key=${seatId} class="seat-record reservation-seat ${members.length > 1 ? 'has-multiple-reservations' : ''} ${occupants.length === 1 ? 'student-open-target' : ''} ${!reservable ? 'seat-is-blocked' : status === 'due' ? 'seat-is-due' : occupants.length ? 'seat-is-paid' : 'seat-is-available'}" tabIndex=${occupants.length === 1 ? 0 : undefined} onClick=${event => occupants.length === 1 && LMS.studentCardClick(event, occupants[0], setViewStudent)} onKeyDown=${event => occupants.length === 1 && LMS.studentCardKeyDown(event, occupants[0], setViewStudent)}>
+          const presentCount = occupants.filter(student => student.isActive !== false && presentStudents.has(student.id)).length;
+          return html`<article key=${seatId} class="seat-record reservation-seat ${presentCount ? 'seat-has-presence' : ''} ${members.length > 1 ? 'has-multiple-reservations' : ''} ${occupants.length === 1 ? 'student-open-target' : ''} ${!reservable ? 'seat-is-blocked' : status === 'due' ? 'seat-is-due' : occupants.length ? 'seat-is-paid' : 'seat-is-available'}" tabIndex=${occupants.length === 1 ? 0 : undefined} onClick=${event => occupants.length === 1 && LMS.studentCardClick(event, occupants[0], setViewStudent)} onKeyDown=${event => occupants.length === 1 && LMS.studentCardKeyDown(event, occupants[0], setViewStudent)}>
             <div class="reservation-seat-heading">
               <div class="reservation-seat-title"><strong class="seat-number">${seatLabel}</strong>${shared && reservable && html`<span class="seat-booking-type is-shared">Shared · ${occupants.length} reserved</span>`}</div>
               ${members.length <= 1 && html`<span class="status-pill ${!reservable ? 'inactive' : status === 'due' ? 'due' : occupants.length ? 'paid' : 'inactive'}">${!reservable ? 'Closed' : status === 'due' ? (daysDue ? daysDue + (daysDue === 1 ? ' Day Due' : ' Days Due') : 'Payment due') : occupants.length ? 'Paid' : 'Available'}</span>`}
             </div>
+            ${presentCount > 0 && html`<div class="seat-presence-banner"><span class="seat-present-badge">✓ Present${members.length > 1 ? ' · ' + presentCount + '/' + members.length : ''}</span></div>`}
             ${occupants.length ? html`<div class="seat-reservations">${members.map(({ student, shift, fin }) => {
               return html`<div class="seat-reservation student-open-target ${members.length > 1 ? 'seat-member-box ' + (fin.totalDues > 0 ? 'member-has-dues' : 'member-paid') : ''}" key=${student.id} tabIndex=${members.length > 1 ? 0 : undefined} onClick=${event => LMS.studentCardClick(event, student, setViewStudent)} onKeyDown=${event => LMS.studentCardKeyDown(event, student, setViewStudent)}>
                 <div class="seat-member-actions"><button class="seat-release-action" onClick=${() => releaseSeat(student)} aria-label=${'Release seat for ' + student.name}>Release</button>${members.length > 1 && html`<span class="seat-member-status ${fin.totalDues > 0 ? 'is-due' : 'is-paid'}">${fin.totalDues > 0 ? (fin.daysDue ? fin.daysDue + (fin.daysDue === 1 ? ' day due' : ' days due') : 'Payment due') : 'Paid'}</span>`}</div>
                 <div class="seat-student-link">
+                  ${members.length > 1 && presentStudents.has(student.id) && html`<span class="seat-present-badge seat-member-present">✓ Present</span>`}
                   <${LMS.StudentPhoto} student=${student} size="lg" className="seat-portrait" />
                   <span class="seat-member-details"><strong>${student.name}</strong><span class="seat-roll-badge">Roll: ${student.rollNo}</span><small class="seat-validity ${fin.totalDues > 0 ? 'is-due' : ''}">Valid till: ${LMS.formatDate(fin.paidUntil)} (${fin.paidMonths} ${fin.paidMonths === 1 ? 'month' : 'months'})</small><small class="seat-shift-time">${shift ? shift.name + ': ' + shift.startTime + ' – ' + shift.endTime : 'No shift assigned'}</small></span>
                 </div>

@@ -1216,3 +1216,9 @@ tbody tr:hover { background: var(--bg-hover); }
 [data-theme="dark"] .accounts-kpi.income strong { color: #34d399; }
 [data-theme="dark"] .accounts-kpi.expense strong, [data-theme="dark"] .accounts-kpi.negative strong, [data-theme="dark"] .accounts-expense-amount { color: #fb7185; }
 [data-theme="dark"] .accounts-kpi.net:not(.negative) strong { color: #c4b5fd; }
+
+/* Today's attendance highlight clears at 21:00 Asia/Kolkata. */
+.reservation-seat.seat-has-presence, .seat-selector-tile.seat-has-presence { border-color: #f5bf00 !important; outline: 2px solid #facc15; outline-offset: 1px; box-shadow: 0 0 0 5px #facc152e, 0 4px 16px #b8860b18; }
+.seat-present-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 3px 8px; border: 1px solid #eab308; border-radius: 6px; background: #fef08a; color: #713f12 !important; font-size: 10px; line-height: 1.4; font-weight: 800; white-space: nowrap; }
+.seat-presence-banner { display: flex; justify-content: flex-start; margin: 0 0 9px; }
+.seat-member-present { align-self: center; margin-bottom: 6px; }
