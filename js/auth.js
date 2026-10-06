@@ -31,7 +31,7 @@ LMS.Auth = {
   },
   startSession(method = 'password') {
     if (LMS.DB.sqlMode && (!LMS.DB.sqlAuthorized || method !== 'google')) throw new Error('SQL connection is not ready. Sign in with your authorised Google account and retry.');
-    return LMS.DB.localSave('session', { loggedIn: true, scope: LMS.DB.scope, method, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
+    return LMS.DB.localSave('session', { loggedIn: true, scope: LMS.DB.scope, method, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 });
   },
   hasSession() {
     const session = LMS.DB.localLoad('session');

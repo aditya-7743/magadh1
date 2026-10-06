@@ -1,6 +1,37 @@
 
 // ==================== SCREENSAVER.JS - Royal 3D Text & Password Unlock ====================
 window.LMS = window.LMS || {};
+LMS.ScreenLock = {
+    async verify(password) {
+        const credential = LMS.DB.localLoad('screenLockCredential');
+        return credential ? LMS.Auth.matches(password, credential) : password === '123';
+    },
+    async change(current, password) {
+        if (!await this.verify(current)) throw new Error('Current screen-lock password is incorrect.');
+        if (password.length < 3) throw new Error('Use at least 3 characters.');
+        LMS.DB.stage('screenLockCredential', await LMS.Auth.hash(password), false);
+        await LMS.DB.flush();
+    }
+};
+
+LMS.ScreenLockSettings = () => {
+    const [form, setForm] = useState({ current: '', password: '', confirm: '' });
+    const [busy, setBusy] = useState(false);
+    const { showToast } = useContext(LMS.AppContext);
+    const save = async e => {
+        e.preventDefault(); if (busy) return;
+        if (form.password !== form.confirm) { showToast('Passwords do not match.', 'error'); return; }
+        setBusy(true);
+        try { await LMS.ScreenLock.change(form.current, form.password); setForm({ current: '', password: '', confirm: '' }); showToast('Screen-lock password saved on this browser/device.', 'success'); }
+        catch (error) { showToast(error.message, 'error'); } finally { setBusy(false); }
+    };
+    return html`<section class="card p-4 space-y-3"><h3 class="font-bold">Inactivity screen lock</h3><p class="text-sm">Locks after 3 minutes. Default password: 123. This browser/device uses its own password, independent of Gmail and Accounts.</p>
+      <form onSubmit=${save} class="space-y-3">
+        <${LMS.Input} type="password" label="Current screen-lock password" autoComplete="current-password" required value=${form.current} onChange=${e => setForm(p => ({ ...p, current: e.target.value }))} />
+        <div class="grid grid-2 gap-3"><${LMS.Input} type="password" label="New password (3+ characters)" autoComplete="new-password" minLength="3" required value=${form.password} onChange=${e => setForm(p => ({ ...p, password: e.target.value }))} /><${LMS.Input} type="password" label="Confirm password" autoComplete="new-password" required value=${form.confirm} onChange=${e => setForm(p => ({ ...p, confirm: e.target.value }))} /></div>
+        <${LMS.Button} type="submit" disabled=${busy}>${busy ? 'Saving…' : 'Change screen-lock password'}</${LMS.Button}>
+      </form></section>`;
+};
 
 LMS.Screensaver = () => {
     const [isActive, setIsActive] = React.useState(false);
@@ -45,7 +76,7 @@ LMS.Screensaver = () => {
 
     const handleUnlock = async (e) => {
         e.preventDefault();
-        if (await LMS.Auth.verify(password) || (!LMS.DB.localLoad('owner') && await LMS.Auth.verifyGoogle())) {
+        if (await LMS.ScreenLock.verify(password)) {
             setIsActive(false);
             setShowUnlock(false);
             setPassword('');

@@ -139,20 +139,25 @@
     localLoad(key, fallback = null) {
       key = cleanKey(key);
       if (key === 'session') {
-        try { return JSON.parse(sessionStorage.getItem('lms_session_' + this.scope)) || fallback; } catch { return fallback; }
+        try {
+          const name = 'lms_session_' + this.scope;
+          const saved = localStorage.getItem(name) || sessionStorage.getItem(name);
+          if (saved && !localStorage.getItem(name)) { localStorage.setItem(name, saved); sessionStorage.removeItem(name); }
+          return JSON.parse(saved) || fallback;
+        } catch { return fallback; }
       }
       return this.cache[key] ?? fallback;
     },
     localSave(key, value) {
       key = cleanKey(key);
       if (key === 'session') {
-        try { sessionStorage.setItem('lms_session_' + this.scope, JSON.stringify(value)); return true; }
+        try { localStorage.setItem('lms_session_' + this.scope, JSON.stringify(value)); sessionStorage.removeItem('lms_session_' + this.scope); return true; }
         catch (error) { this.fail(error); return false; }
       }
       return this.stage(key, value);
     },
     localRemove(key) {
-      if (key === 'session') sessionStorage.removeItem('lms_session_' + this.scope);
+      if (key === 'session') { localStorage.removeItem('lms_session_' + this.scope); sessionStorage.removeItem('lms_session_' + this.scope); }
       else this.stage(key, null);
     },
     stage(key, value, cloud = true, { trackActivity = true } = {}) {

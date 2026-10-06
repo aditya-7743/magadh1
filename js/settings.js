@@ -194,6 +194,7 @@ LMS.Settings = ({ onLogout }) => {
     <${LMS.AttendanceAlertSettings} key=${LMS.DB.scope} />
     <${LMS.SqlMigrationPanel} />
     <${LMS.AccountsSecurity} />
+    <${LMS.ScreenLockSettings} />
 
     <div class="card p-4"><${Input} label="Library Name" value=${settings.libraryName} onChange=${e => handleSettingChange('libraryName', e.target.value)} /></div>
     <!-- 2. Upload QR Code Section -->

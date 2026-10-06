@@ -34,6 +34,8 @@ LMS.SqlApi = {
         ACCOUNTS_TOO_MANY_ATTEMPTS: 'Too many attempts. Try again after 15 minutes.',
         ACCOUNTS_PASSWORD_REQUIREMENTS: 'Enter a username and a password with 3–256 characters.',
         ACCOUNTS_INVALID_EXPIRY: 'Choose a password expiry between 1 hour and 30 days.',
+        HALL_EMAIL_VERIFICATION_REQUIRED: 'Verify your personal Google email to delete this hall.',
+        HALL_NOT_FOUND: 'This hall has already been removed. Refresh the seat list.',
         RECORD_CHANGED: 'Cloud changed this record. Review before overwriting.',
         DATASET_CHANGED: 'The library backup has been replaced. Close old tabs, refresh and sign in again. Previous pending edits are retained separately.',
         ROLL_ALREADY_EXISTS: 'This roll number is already assigned to another student.',

@@ -206,23 +206,19 @@ LMS.SeatManagement = () => {
     setSelectedHall(newHallData.id);
   };
 
+  const [deletingHall, setDeletingHall] = useState(false);
   const removeHall = async (hall) => {
-    if (!await LMS.Auth.confirmAction('Enter password to delete hall:')) {
-      showToast('Incorrect password!', 'error');
-      return;
-    }
-    if (confirm('Delete ' + hall.name + '? All seat assignments will be cleared.')) {
-      setStudents(prev => prev.map(s => LMS.resolveSeat(s.assignedSeat, halls)?.hall.id === hall.id ? { ...s, assignedSeat: '' } : s));
-      setHalls(prev => prev.filter(h => h.id !== hall.id));
-
-      // Note: Students are updated too, but that's handled by debounced or separate sync if we refactor releaseSeat
-
-      if (selectedHall === hall.id) {
-        setSelectedHall(halls.find(h => h.id !== hall.id)?.id || null);
-      }
-      addLog('Deleted hall: ' + hall.name);
-      showToast('Hall deleted!', 'success');
-    }
+    if (deletingHall || !confirm('Delete ' + hall.name + '? Its seats will be released. Student and payment records will remain. Personal email verification is required.')) return;
+    setDeletingHall(true);
+    try {
+      const accountsIdentity = await LMS.AccountAccess.proof();
+      await LMS.DB.syncLocalToCloud();
+      const result = await LMS.SqlApi.request('accounts/delete-hall', { method: 'POST', body: { hallId: hall.id }, accountsIdentity });
+      await LMS.DB.pullSqlChanges();
+      if (selectedHall === hall.id) setSelectedHall(halls.find(h => h.id !== hall.id)?.id || null);
+      showToast('Hall deleted. ' + result.released + ' seat assignments released.', 'success');
+    } catch (error) { showToast(error.message, 'error'); }
+    finally { setDeletingHall(false); }
   };
 
   const releaseSeat = (student) => {
@@ -277,6 +273,7 @@ LMS.SeatManagement = () => {
       </div>
       ${currentHall && html`<div class="hall-edit-actions">
         <${Button} variant="secondary" size="sm" onClick=${() => editHall(currentHall)}><${Icons.Edit} />Edit hall</${Button}>
+        <${Button} variant="danger" size="sm" disabled=${deletingHall} onClick=${() => removeHall(currentHall)}>${deletingHall ? 'Deleting…' : 'Delete hall'}</${Button}>
       </div>`}
       
       <div class="seat-toolbar-controls">
