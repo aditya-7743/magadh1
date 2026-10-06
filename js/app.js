@@ -1,6 +1,24 @@
 // ==================== APP.JS - Main App, Top Navigation & Router ====================
 window.LMS = window.LMS || {};
 
+LMS.AppUpdateNotice = () => {
+  const [update, setUpdate] = useState(null);
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    let registration, cancelled = false;
+    const inspect = () => { if (!cancelled && registration?.waiting) setUpdate(registration.waiting); };
+    const found = () => registration?.installing?.addEventListener('statechange', inspect);
+    navigator.serviceWorker.ready.then(reg => { if (cancelled) return; registration = reg; inspect(); reg.addEventListener('updatefound', found); });
+    return () => { cancelled = true; registration?.removeEventListener('updatefound', found); };
+  }, []);
+  if (!update) return null;
+  return html`<div class="app-update-notice" role="status"><span>A new app update is ready.</span><button onClick=${() => {
+    if (!confirm('Save any unfinished form before updating. Reload the app now?')) return;
+    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+    update.postMessage({ type: 'ACTIVATE_UPDATE' });
+  }}>Update & reload</button></div>`;
+};
+
 // ==================== THEME TOGGLE COMPONENT ====================
 LMS.ThemeToggle = () => {
   const { Icons } = LMS;
@@ -247,6 +265,7 @@ LMS.App = () => {
       <${LMS.Chatbot} />
       ${inspectedStudentId && html`<${LMS.StudentInspector} key=${inspectedStudentId} studentId=${inspectedStudentId} onClose=${() => setInspectedStudentId(null)} />`}
       <${LMS.BottomStatusBar} />
+      <${LMS.AppUpdateNotice} />
       ${toast && html`<${LMS.Toast} message=${toast.message} type=${toast.type} onClose=${() => setToast(null)} />`}
       <${LMS.Screensaver} />
     </div>

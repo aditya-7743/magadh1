@@ -21,11 +21,11 @@ LMS.useSeatPresence = () => {
     refresh();
     return () => { clearTimeout(timer); unsubscribe(); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, []);
-  return useMemo(() => {
-    const clock = LMS.seatPresenceClock();
-    const day = clock.active ? LMS.DB.localLoad('attendance', {})[clock.day] || {} : {};
-    return new Set(Object.entries(day).filter(([, value]) => value === true).map(([id]) => id));
-  }, [revision, LMS.DB.scope]);
+  // Read the current cache on every render as well as attendance notifications.
+  // A cloud sync or parent refresh must not leave an earlier empty result cached.
+  const clock = LMS.seatPresenceClock();
+  const day = clock.active ? LMS.DB.localLoad('attendance', {})[clock.day] || {} : {};
+  return new Set(Object.entries(day).filter(([, value]) => value === true || value?.status === true).map(([id]) => String(id)));
 };
 
 
@@ -301,6 +301,7 @@ LMS.SeatManagement = () => {
           Viewing <strong class="hall-current-name">${currentHall?.name || 'No hall selected'}</strong>. 
           Physical: <strong>${hallStats.totalSeats}</strong> · Reservable: <strong>${hallStats.reservableSeats}</strong> · Reserved: <strong>${hallStats.reservedSeats}</strong> · Available: <strong>${hallStats.availableSeats}</strong> · Shared: <strong>${hallStats.sharedSeats}</strong>
         </p>
+        <p class="seat-presence-note"><span class="seat-present-badge">✓ Present today</span> Golden border = present · Resets at 9 PM IST${!LMS.seatPresenceClock().active ? ' · Today’s seat highlights have reset' : ''}</p>
       </div>
       ${currentHall && html`<div class="hall-edit-actions">
         <${Button} variant="secondary" size="sm" onClick=${() => editHall(currentHall)}><${Icons.Edit} />Edit hall</${Button}>
