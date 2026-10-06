@@ -457,7 +457,7 @@ LMS.StudentCard = ({ student, payments, shifts, halls, settings, onView, onViewP
       <div class="directory-card-top">
         <${LMS.StudentPhoto} student=${student} size="lg" className="directory-avatar" style=${{background:avatarColour}} />
         <div class="directory-person">
-          <div class="directory-eyebrow"><button class="directory-roll" title="Copy roll number" onClick=${() => copyText(student.rollNo, 'Roll No copied!')}>ROLL ${student.rollNo}</button><span>${student.isActive === false ? 'Inactive member' : 'Library member'}</span></div><div class="directory-title"><button class="directory-name" onClick=${onView}>${student.name}</button></div>
+          <div class="directory-eyebrow"><button class="directory-roll" title="Copy roll number" onClick=${() => copyText(student.rollNo, 'Roll No copied!')}>${student.rollNo}</button><span>${student.isActive === false ? 'Inactive member' : 'Library member'}</span></div><div class="directory-title"><button class="directory-name" onClick=${onView}>${student.name}</button></div>
           <p class="directory-meta"><strong>${shift?.name || 'No shift'}</strong>${shift && html`<span>(${shift.startTime} – ${shift.endTime})</span>`}<span class="directory-joined">Joined ${LMS.formatDate(student.admissionDate)}</span></p>
           <div class="directory-validity"><span class="directory-validity-icon">${isDue ? html`<${LMS.Icons.Bell} />` : html`<${LMS.Icons.Check} />`}</span><span>${isDue ? 'Due since ' + LMS.formatDate(fin.dueSince) : 'Valid until ' + LMS.formatDate(fin.paidUntil)}</span>${student.isActive === false && html`<span class="status-pill inactive">Inactive</span>`}</div>
         </div>
