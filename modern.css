@@ -1232,3 +1232,8 @@ tbody tr:hover { background: var(--bg-hover); }
 .reservation-seat-heading .status-pill { flex-shrink: 0; }
 .seat-reservation .seat-student-link { position: relative; }
 .seat-student-link > .seat-member-present { position: absolute; right: 0; top: 0; margin: 0; font-size: 9px; }
+/* Keep the presence badge at the true horizontal centre of the seat header. */
+.reservation-seat-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; }
+.reservation-seat-heading .reservation-seat-title { grid-column: 1; grid-row: 1; justify-self: start; }
+.reservation-seat-heading .seat-heading-present { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; }
+.reservation-seat-heading .status-pill { grid-column: 3; grid-row: 1; justify-self: end; }
