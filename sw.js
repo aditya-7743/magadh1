@@ -1,8 +1,8 @@
-const CACHE_NAME = 'lms-v68';
+const CACHE_NAME = 'lms-v69';
 const IS_LOCALHOST = ['127.0.0.1', 'localhost', '[::1]'].includes(self.location.hostname);
 self.addEventListener('message', event => { if (event.data?.type === 'ACTIVATE_UPDATE') self.skipWaiting(); });
 const assets = ['config', 'firebase-db', 'store', 'db-core', 'auth', 'utils', 'finance', 'records', 'icons', 'components', 'attendance-alerts', 'sql-migration', 'sql-api', 'sql-db', 'accounts-access', 'router', 'login', 'dashboard', 'students', 'seats', 'payments', 'accounts', 'dues', 'alerts', 'attendance', 'activity', 'settings', 'chatbot', 'screensaver', 'app'];
-const urls = ['./', './index.html', './styles.css?v=68', './modern.css?v=68', './icon.svg', './manifest.json', ...assets.map(name => './js/' + name + '.js?v=68')];
+const urls = ['./', './index.html', './styles.css?v=69', './modern.css?v=69', './icon.svg', './manifest.json', ...assets.map(name => './js/' + name + '.js?v=69')];
 const vendors = ['https://cdn.tailwindcss.com', 'https://unpkg.com/react@18/umd/react.production.min.js', 'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js', 'https://unpkg.com/htm@3/dist/htm.js', ...['app', 'database', 'auth'].map(name => 'https://www.gstatic.com/firebasejs/9.23.0/firebase-' + name + '-compat.js')];
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE_NAME);

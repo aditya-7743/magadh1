@@ -790,19 +790,25 @@ LMS.StudentManagement = () => {
   const [viewSeatMap, setViewSeatMap] = useState(null);
   const [viewImage, setViewImage] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [shiftFilter, setShiftFilter] = useState('');
   // Removed duplicate state declarations
   const [paymentModal, setPaymentModal] = useState({ open: false, student: null });
   const [seatSelectorCb, setSeatSelectorCb] = useState(null); // Callback for seat selection
   const { Button, Card, Modal, SearchBar, Icons, ImageViewer } = LMS;
 
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [search, sortBy, showInactive]);
+  useEffect(() => setPage(1), [search, sortBy, showInactive, shiftFilter]);
   const deletedPayments = LMS.DB.localLoad('_paymentDeletions', {});
   const activityIndex = useMemo(() => LMS.studentActivityIndex(students, payments, deletedPayments), [students, payments, deletedPayments]);
   const searchRanks = useMemo(() => new Map(students.map(student => [student.id, LMS.studentSearchRank(student, search)])), [students, search]);
   // Search relevance comes first; the selected sort orders equally relevant matches.
   const filtered = students.filter(s => {
     if (!showInactive && !s.isActive) return false;
+    if (shiftFilter) {
+      const selected = shifts.find(shift => String(shift.id) === shiftFilter);
+      const value = String(s.shift ?? '').trim().toLowerCase();
+      if (value !== shiftFilter.toLowerCase() && (!selected || value !== selected.name.trim().toLowerCase())) return false;
+    }
     return Number.isFinite(searchRanks.get(s.id));
   }).sort((a, b) => {
     const relevance = searchRanks.get(a.id) - searchRanks.get(b.id);
@@ -921,6 +927,10 @@ LMS.StudentManagement = () => {
       <div class="student-filters">
         <div class="student-search"><${Icons.Search} /><input aria-label="Search students" placeholder="Search roll number, mobile or name…" value=${search} onChange=${e => setSearch(e.target.value)} /></div>
         <label class="inactive-filter"><input type="checkbox" checked=${showInactive} onChange=${e => setShowInactive(e.target.checked)} />Show inactive</label>
+        <select class="input-field student-sort" aria-label="Filter students by shift" value=${shiftFilter} onChange=${e => setShiftFilter(e.target.value)}>
+          <option value="">All shifts</option>
+          ${shifts.map(shift => html`<option key=${shift.id} value=${String(shift.id)}>${shift.name}${shift.startTime && shift.endTime ? ' (' + shift.startTime + '–' + shift.endTime + ')' : ''}</option>`)}
+        </select>
         <select class="input-field student-sort" aria-label="Sort students" value=${sortBy} onChange=${e => setSortBy(e.target.value)}>
           <option value="activity">Latest Changes First</option><option value="newest">Newest Admission</option><option value="oldest">Oldest Admission</option><option value="name_asc">Name (A-Z)</option><option value="name_desc">Name (Z-A)</option>
         </select>
@@ -947,7 +957,7 @@ LMS.StudentManagement = () => {
             />
           `)}
           ${filtered.length === 0 && html`
-            <div class="card student-empty"><${Icons.Students} /><h3>${search ? 'No matching students' : 'Your student directory starts here'}</h3><p>${search ? 'Try a different name, roll number or phone number.' : 'Add a student or include inactive members to see more records.'}</p></div>
+            <div class="card student-empty"><${Icons.Students} /><h3>${search || shiftFilter ? 'No matching students' : 'Your student directory starts here'}</h3><p>${search || shiftFilter ? 'Try another search, choose All shifts, or include inactive students.' : 'Add a student or include inactive members to see more records.'}</p></div>
           `}
       </div>
     </div>
