@@ -20,6 +20,7 @@ LMS.Alerts = () => {
   const query = search.trim().toLowerCase();
   const filtered = rows.filter(row => row.status === tab && [row.student.name, row.student.rollNo, row.student.mobile, LMS.formatSeatLabel(row.student.assignedSeat, halls)].some(value => String(value || '').toLowerCase().includes(query)));
   const selectedStudent = students.find(student => student.id === dialog?.studentId);
+  const registrationTasks = (pendingWork || []).filter(work => !work.completed && work.unregisteredRoll);
   const openAction = (student, mode) => {
     setDialog({ studentId: student.id, mode }); setError(''); setPassword('');
     setNote(''); setUntil(LMS.attendanceAddDays(today, mode === 'leave' ? 30 : config.snoozeDays));
@@ -62,7 +63,22 @@ LMS.Alerts = () => {
     addLog('Opened WhatsApp attendance reminder: ' + student.name + ' (#' + student.rollNo + ')');
   };
   return html`<div class="attendance-alerts-workspace">
-    ${(pendingWork || []).some(work => !work.completed && work.unregisteredRoll) && html`<section class="card space-y-3"><h3 class="font-bold">Pending work · Unregistered attendance</h3><p>Add these students to the student register, then mark the task complete.</p>${pendingWork.filter(work => !work.completed && work.unregisteredRoll).map(work => html`<div key=${work.id} class="flex items-center justify-between gap-3"><span>${work.text}</span><${Button} size="sm" onClick=${() => setPendingWork(previous => previous.map(item => item.id === work.id ? { ...item, completed: true } : item))}>Done</${Button}></div>`)}</section>`}
+    ${registrationTasks.length > 0 && html`<section class="registration-pending" aria-labelledby="registration-pending-title">
+      <header class="registration-pending-header">
+        <span class="registration-pending-icon" aria-hidden="true"><${Icons.Log} /></span>
+        <div class="registration-pending-title"><span class="registration-pending-eyebrow">PENDING WORK</span><h3 id="registration-pending-title">Complete student registration</h3><p>Attendance recorded. Add these students to the register, then mark them done.</p></div>
+        <span class="registration-pending-count"><strong>${registrationTasks.length}</strong> to review</span>
+      </header>
+      <div class="registration-pending-grid">${registrationTasks.map(work => {
+        const details = String(work.text || '').match(/^Record Update: (.*?) \(Roll: .*?\) - Attendance marked on (.+)$/);
+        const name = details?.[1] || 'Student details pending';
+        return html`<article class="registration-task" key=${work.id}>
+          <div class="registration-task-person"><span class="registration-task-roll" aria-label=${'Roll ' + work.unregisteredRoll}>${work.unregisteredRoll}</span><div><h4>${name}</h4><span class="registration-task-status"><i aria-hidden="true"></i>Registration pending</span></div></div>
+          <div class="registration-task-bottom"><div class="registration-task-date"><span>ATTENDANCE MARKED</span><strong>${details?.[2] || 'See task details'}</strong></div><button type="button" class="registration-task-done" aria-label=${'Mark roll ' + work.unregisteredRoll + ' registration task done'} onClick=${LMS.safeAction(() => setPendingWork(previous => previous.map(item => item.id === work.id ? { ...item, completed: true } : item)))}><${Icons.Check} />Mark done</button></div>
+          ${!details && html`<p class="registration-task-note">${work.text}</p>`}
+        </article>`;
+      })}</div>
+    </section>`}
     <div class="attendance-alert-heading"><div><h2>Attendance follow-ups</h2><p>No Present record for ${config.days} ${dayType} · Active students only</p></div><${Button} variant="secondary" onClick=${openAttendanceAlertSettings}><${Icons.Settings} />Alert settings</${Button}></div>
     ${!config.enabled ? html`<div class="card quiet-empty"><h3>Attendance alerts are turned off</h3><p>Enable them in Alert settings to see follow-ups.</p></div>` : html`
       <div class="attendance-alert-toolbar"><div class="attendance-alert-tabs" role="tablist" aria-label="Attendance follow-up status">${tabs.map(([key, label]) => html`<button key=${key} role="tab" aria-selected=${tab === key} class=${tab === key ? 'selected' : ''} onClick=${() => setTab(key)}>${label}<span>${counts[key]}</span></button>`)}</div><input class="input-field" aria-label="Search attendance alerts" placeholder="Search roll, name, phone or seat" value=${search} onChange=${event => setSearch(event.target.value)} /></div>

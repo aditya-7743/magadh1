@@ -1291,3 +1291,44 @@ tbody tr:hover { background: var(--bg-hover); }
   .attendance-quick-form { gap: 8px; }
   .attendance-roll-entry input { min-height: 52px; }
 }
+
+/* Pending registrations in Alerts */
+.registration-pending { overflow: hidden; border: 1px solid #f4c463; border-radius: 18px; background: var(--bg-card); box-shadow: 0 6px 24px #a9680910; }
+.registration-pending-header { display: flex; align-items: center; gap: 16px; padding: 22px 24px; background: linear-gradient(110deg, #fff3cf, #fffaf0); border-bottom: 1px solid #f4dfad; }
+.registration-pending-icon { display: grid; place-items: center; flex: 0 0 48px; height: 48px; color: #a95500; background: #ffdf87; border: 1px solid #efc151; border-radius: 14px; }
+.registration-pending-icon svg { width: 24px; height: 24px; }
+.registration-pending-title { flex: 1; min-width: 0; }
+.registration-pending-eyebrow { color: #9a5807; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.registration-pending-title h3 { margin: 4px 0 6px; font-size: 20px; font-weight: 800; color: #492d0d; }
+.registration-pending-title p { margin: 0; color: #886236; font-size: 13px; line-height: 1.5; }
+.registration-pending-count { display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 9px 13px; border: 1px solid #efcc80; border-radius: 30px; color: #855008; background: #fff9e9; font-size: 12px; font-weight: 650; }
+.registration-pending-count strong { font-size: 20px; }
+.registration-pending-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; padding: 18px; }
+.registration-task { min-width: 0; border: 1px solid var(--border-color); border-radius: 13px; padding: 17px; background: var(--bg-card); }
+.registration-task-person { display: flex; align-items: center; gap: 13px; }
+.registration-task-person > div { min-width: 0; }
+.registration-task-roll { flex-shrink: 0; padding: 11px 13px; border-radius: 11px; color: white; background: linear-gradient(135deg, #225be9, #6637e8); font-size: 20px; font-weight: 850; box-shadow: 0 3px 8px #315be52b; }
+.registration-task-person h4 { margin: 0 0 6px; color: var(--text-dark); font-size: 16px; font-weight: 750; overflow-wrap: anywhere; }
+.registration-task-status { display: inline-flex; align-items: center; gap: 6px; color: #9a6000; font-size: 11px; font-weight: 650; }
+.registration-task-status i { width: 6px; height: 6px; border-radius: 50%; background: #eda900; }
+.registration-task-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; padding-top: 13px; border-top: 1px solid var(--border-color); }
+.registration-task-date span { display: block; color: var(--text-light); font-size: 9px; font-weight: 700; letter-spacing: .07em; }
+.registration-task-date strong { display: block; margin-top: 4px; color: var(--text-dark); font-size: 13px; }
+.registration-task-done { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 42px; padding: 9px 13px; border: 1px solid #009b62; border-radius: 9px; background: #008451; color: white; font-size: 12px; font-weight: 750; cursor: pointer; }
+.registration-task-done svg { width: 16px; height: 16px; }
+.registration-task-done:hover { background: #006f44; }
+.registration-task-done:focus-visible { outline: 3px solid #eab308; outline-offset: 3px; }
+.registration-task-note { color: var(--text-light); font-size: 12px; margin-top: 12px; overflow-wrap: anywhere; }
+[data-theme="dark"] .registration-pending-header { background: linear-gradient(110deg, #42311b, #29251e); border-color: #745822; }
+[data-theme="dark"] .registration-pending-title h3 { color: #ffe6b2; }
+[data-theme="dark"] .registration-pending-title p, [data-theme="dark"] .registration-pending-eyebrow, [data-theme="dark"] .registration-task-status { color: #e5bc74; }
+@media (max-width: 640px) {
+  .registration-pending-header { padding: 16px; gap: 11px; flex-wrap: wrap; }
+  .registration-pending-icon { flex-basis: 40px; height: 40px; border-radius: 11px; }
+  .registration-pending-title h3 { font-size: 17px; }
+  .registration-pending-title p { font-size: 12px; }
+  .registration-pending-count { margin-left: 51px; padding: 5px 11px; }
+  .registration-pending-count strong { font-size: 16px; }
+  .registration-pending-grid { padding: 12px; gap: 10px; }
+  .registration-task { padding: 14px; }
+}
