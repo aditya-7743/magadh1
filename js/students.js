@@ -10,6 +10,10 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
     feeChanges: [], pastHistory: [], deactivatedAt: null,
   });
   const [errors, setErrors] = useState({});
+  const [feeCycle, setFeeCycle] = useState('');
+  const [correctExistingFee, setCorrectExistingFee] = useState(false);
+  const feeChanged = !!student && (Number(form.monthlyFee) !== Number(student.monthlyFee) || correctExistingFee);
+  const feeCycles = student ? LMS.feeCycleOptions({ ...student, admissionDate: form.admissionDate }) : {};
   const [viewPhoto, setViewPhoto] = useState(null);
   const [showWebcam, setShowWebcam] = useState(false);
   const [webcamField, setWebcamField] = useState(null); // 'photo' or 'formPhoto'
@@ -112,6 +116,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
         feeChanges: [], pastHistory: [], deactivatedAt: null,
       });
     }
+    setFeeCycle(''); setCorrectExistingFee(false);
   }, [student]);
 
   const handleChange = (f, v) => setForm(prev => ({ ...prev, [f]: v }));
@@ -144,6 +149,7 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
     if (form.parentMobile && !LMS.validateMobile(form.parentMobile)) e.parentMobile = 'Invalid (10 digits)';
     if (form.aadhaar && !LMS.validateAadhaar(form.aadhaar)) e.aadhaar = 'Invalid (12 digits)';
     if (!Number.isFinite(Number(form.monthlyFee)) || Number(form.monthlyFee) <= 0) e.monthlyFee = 'Fee must be greater than zero';
+    if (feeChanged && !feeCycles[feeCycle]) e.feeCycle = 'Choose current or next billing cycle for the fee change.';
     if (!LMS.validDate(form.admissionDate)) e.admissionDate = 'Valid date required';
     if (form.inactiveStartDate && (!LMS.validDate(form.inactiveStartDate) || form.inactiveStartDate > LMS.today() || form.inactiveStartDate < form.admissionDate)) e.inactiveStartDate = 'Enter a valid inactive start date';
     if (form.shift && !shifts.some(s => s.id === form.shift)) e.shift = 'Select an existing shift';
@@ -178,11 +184,8 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
         fee: Number(student ? student.monthlyFee : form.monthlyFee)
       });
     }
-    if (student && Number(form.monthlyFee) !== Number(student.monthlyFee)) {
-      // A future admission starts at the new rate. For existing memberships,
-      // only cycles starting on/after today pick up this change.
-      const effectiveDate = form.admissionDate > LMS.today() ? form.admissionDate : LMS.today();
-      feeChanges.push({ date: effectiveDate, fee: Number(form.monthlyFee) });
+    if (feeChanged) {
+      feeChanges = LMS.applyCycleFee({ ...student, feeChanges }, form.monthlyFee, feeCycles[feeCycle]);
     }
     const nextStudent = { ...form, rollNo: String(form.rollNo).trim().toUpperCase(), name: form.name.trim(), monthlyFee: Number(form.monthlyFee), id: form.id || LMS.generateId(), feeChanges, pastHistory: form.pastHistory || [] };
     if (form.inactiveStartDate && !form.isActive) {
@@ -376,11 +379,15 @@ LMS.InlineStudentForm = ({ student, onSave, onClear, halls, shifts, students, pa
             type="number" 
             class="input-field font-mono" 
             aria-label="Monthly Fees" value=${form.monthlyFee} 
-            onChange=${e => handleChange('monthlyFee', Number(e.target.value))} 
+            onChange=${e => { handleChange('monthlyFee', Number(e.target.value)); setFeeCycle(''); }} 
           />
-          ${student && Number(form.monthlyFee) !== Number(student.monthlyFee) && html`
-            <p class="fee-change-notice">Fee changes from ₹${student.monthlyFee} to ₹${form.monthlyFee}. Earlier billing cycles keep their old fee; the new rate applies to cycles starting on or after ${LMS.formatDate(form.admissionDate > LMS.today() ? form.admissionDate : LMS.today())}.</p>
-          `}
+          ${student && html`<label class="fee-change-notice"><input type="checkbox" checked=${correctExistingFee} onChange=${e => { setCorrectExistingFee(e.target.checked); setFeeCycle(''); }} /> Correct the cycle for this fee (even if the amount is unchanged)</label>`}
+          ${feeChanged && html`<fieldset class="fee-cycle-choice"><legend>Apply ₹${form.monthlyFee} from — choose one</legend>
+            <label><input type="radio" name="fee-cycle" checked=${feeCycle === 'current'} disabled=${!feeCycles.current} onChange=${() => setFeeCycle('current')} /> Previous / current cycle ${feeCycles.current ? '— ' + LMS.formatDate(feeCycles.current) : '— not started'}<small>Correct this cycle’s fee and recalculate its dues.</small></label>
+            <label><input type="radio" name="fee-cycle" checked=${feeCycle === 'next'} disabled=${!feeCycles.next} onChange=${() => setFeeCycle('next')} /> Next cycle ${feeCycles.next ? '— ' + LMS.formatDate(feeCycles.next) : '— available after reactivation'}<small>Keep previous cycles and their dues unchanged.</small></label>
+            <p>Earlier fee history and payment receipts stay unchanged. This rate replaces fee changes scheduled from the selected date onward.</p>
+            ${errors.feeCycle && html`<p role="alert">${errors.feeCycle}</p>`}
+          </fieldset>`}
         </div>
                 <!-- Assign Seat Button -->
           <div>

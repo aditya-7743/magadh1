@@ -20,6 +20,31 @@
     else if (!periods.some(x => !x.end)) periods.push({ start: day, end: null });
     return { ...student, isActive: active, inactivePeriods: periods, deactivatedAt: active ? null : new Date().toISOString(), ...(active ? {} : { assignedSeat: null }) };
   };
+  LMS.feeCycleOptions = (student, day = LMS.today()) => {
+    if (!LMS.validDate(student.admissionDate)) return { current: null, next: null };
+    let cursor = student.admissionDate, anchor = Number(cursor.slice(8)), current = null;
+    const periods = LMS.inactivity(student);
+    for (let i = 0; i < 2400; i++) {
+      for (const period of periods) {
+        if (period.start <= cursor && (!period.end || cursor < period.end)) {
+          if (!period.end) return { current, next: null };
+          cursor = period.end; anchor = Number(cursor.slice(8));
+        }
+      }
+      if (cursor > day) return { current, next: cursor };
+      current = cursor;
+      const [year, month] = cursor.split('-').map(Number);
+      const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      cursor = LMS.today(new Date(Date.UTC(year, month, Math.min(anchor, last))));
+    }
+    return { current, next: null };
+  };
+  LMS.applyCycleFee = (student, fee, effectiveDate) => {
+    if (!LMS.validDate(effectiveDate) || !Number.isFinite(Number(fee)) || Number(fee) <= 0) throw new Error('Choose a valid fee and billing cycle.');
+    const history = student.feeChanges?.length ? student.feeChanges : [{ date: student.admissionDate, fee: Number(student.monthlyFee) }];
+    // Keep earlier cycles intact; the selected rate replaces later rate instructions.
+    return [...history.filter(change => String(change.date).slice(0, 10) < effectiveDate), { date: effectiveDate, fee: Number(fee) }];
+  };
   const paymentIndexes = new WeakMap(), calculations = new WeakMap();
   LMS.allPayments = (payments, students) => {
     const map = new Map(payments.map(p => [p.id, p]));

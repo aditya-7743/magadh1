@@ -1274,6 +1274,12 @@ tbody tr:hover { background: var(--bg-hover); }
 .attendance-last-mark small { display: block; margin-top: 5px; font-size: 10px; }
 @media(max-width: 640px) { .attendance-quick-card { padding: 16px !important; } .attendance-quick-date input { font-size: 16px; } .attendance-quick-heading h3 { font-size: 18px; } .attendance-quick-actions { gap: 8px; } }
 
+.fee-cycle-choice { margin-top: 12px; padding: 14px; border: 1px solid #9db9ff; border-radius: 12px; background: var(--bg-card); }
+.fee-cycle-choice legend { font-weight: 700; font-size: 14px; }
+.fee-cycle-choice label { display: block; padding: 12px 8px; cursor: pointer; }
+.fee-cycle-choice input { margin-right: 8px; accent-color: #2459d8; }
+.fee-cycle-choice small { display: block; margin: 5px 0 0 25px; color: var(--text-light); }
+.fee-cycle-choice p { font-size: 12px; color: var(--text-light); }
 .attendance-keyboard-bar { display: none; }
 @media (max-width: 640px) {
   .attendance-keyboard-bar { position: fixed; left: 0; right: 0; height: 72px; z-index: 10000; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-card); border-top: 2px solid #16a34a; box-shadow: 0 -4px 16px #0002; }
