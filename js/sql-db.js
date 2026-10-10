@@ -133,12 +133,27 @@
       while (scope === this.scope) {
         const operation = this.localLoad('offline_queue', [])[0];
         if (!operation) break;
-        await LMS.SqlApi.operation({ id: operation.id, changes: operation.changes, force: operation.force === true });
+        const result = await LMS.SqlApi.operation({ id: operation.id, changes: operation.changes, force: operation.force === true });
         const remaining = await LMS.Store.commit(scope, [], queue => queue.filter(item => item.id !== operation.id));
-        if (scope === this.scope) this.cache.offline_queue = remaining;
+        if (scope === this.scope) {
+          this.cache.offline_queue = remaining;
+          // Apply authoritative retention tombstones after removing this operation;
+          // later pending edits still win through acceptRemote's normal merge.
+          for (const change of result.applied || []) {
+            if (change.key === 'activityLog' && change.value?._deleted) {
+              await this.acceptRemote('activityLog', this.localLoad('activityLog', []).filter(log => log.id !== change.id), scope);
+            } else if (change.key === 'attendance' && change.value === null) {
+              const next = structuredClone(this.localLoad('attendance', {}));
+              const [day, id] = change.id.split('/');
+              if (next[day]) delete next[day][id];
+              await this.acceptRemote('attendance', next, scope);
+            }
+          }
+        }
       }
+      this.paymentSyncIssue = null;
       this.error = ''; this.connected = true; return true;
-    } catch (error) { this.fail(error); return false; }
+    } catch (error) { this.paymentSyncIssue = error.code === 'INVALID_PAYMENT' ? error.details || {} : null; this.fail(error); return false; }
     finally { this.processing = false; this.notify('status'); }
   };
   db.syncLocalToCloud = async function() {

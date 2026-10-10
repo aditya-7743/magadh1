@@ -63,6 +63,7 @@ LMS.Alerts = () => {
     addLog('Opened WhatsApp attendance reminder: ' + student.name + ' (#' + student.rollNo + ')');
   };
   return html`<div class="attendance-alerts-workspace">
+    <${LMS.CashStaffAlerts}/>
     ${registrationTasks.length > 0 && html`<section class="registration-pending" aria-labelledby="registration-pending-title">
       <header class="registration-pending-header">
         <span class="registration-pending-icon" aria-hidden="true"><${Icons.Log} /></span>

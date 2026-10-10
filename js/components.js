@@ -276,6 +276,7 @@ LMS.SaveStatusPanel = () => {
   return html`<div class="card p-4 m-4" role="alert" style=${{ position: 'relative', zIndex: 100, border: '2px solid #ef4444' }}>
     <p>${status.error}</p>
     <button class="btn btn-secondary btn-sm" onClick=${async () => { try { await LMS.DB.flush(); await LMS.DB.processOfflineQueue(); } catch (error) { LMS.DB.fail(error); } }}>Retry save / sync</button>
+    ${LMS.DB.paymentSyncIssue && html`<${LMS.PendingPaymentRepair} />`}
     ${conflict && html`<button class="btn btn-secondary btn-sm" onClick=${() => setReview(!review)}>Review conflict</button>`}
     ${review && conflict && html`<div><p>Pending local changes:</p><pre style=${{ maxHeight: '200px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>${JSON.stringify((LMS.DB.localLoad('offline_queue', [])[0]?.changes || []).map(x => ({ collection: x.key, id: x.id, local: x.key === 'owner' ? '[admin credentials]' : x.value })), null, 2)}</pre>
       <button class="btn btn-secondary btn-sm" onClick=${() => { if (confirm('Discard this pending operation and use the current cloud records?')) LMS.DB.resolveConflict(false).catch(error => LMS.DB.fail(error)); }}>Use cloud records</button>

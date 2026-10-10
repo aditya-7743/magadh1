@@ -3,6 +3,7 @@ window.LMS = window.LMS || {};
 (() => {
   const pages = new Set(['dashboard', 'students', 'seats', 'payments', 'accounts', 'dues', 'attendance', 'activity', 'alerts', 'settings']);
   const eventName = 'lms-route-change';
+  if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
   LMS.readRoute = () => {
     const raw = window.location.hash.replace(/^#\/?/, '');
     const separator = raw.indexOf('?');

@@ -1,6 +1,25 @@
 // ==================== SETTINGS.JS - Settings Page ====================
 window.LMS = window.LMS || {};
 
+LMS.HistoryRetentionSettings = () => {
+  const { settings, setSettings, showToast } = useContext(LMS.AppContext);
+  const current = LMS.historyRetention(settings);
+  const [draft, setDraft] = useState(current);
+  useEffect(() => setDraft(current), [current.activityDays, current.attendanceDays]);
+  const save = () => {
+    const value = { activityDays: Number(draft.activityDays), attendanceDays: Number(draft.attendanceDays) };
+    if (Object.values(value).some(days => !Number.isInteger(days) || days < 1 || days > 3650)) { showToast('Enter 1–3650 whole days for each history.', 'error'); return; }
+    if (!confirm(`Keep Activity for ${value.activityDays} days and Attendance for ${value.attendanceDays} days? Older records will be permanently removed on SQL sync. Increasing this later cannot restore deleted history. Students, payments and pending tasks are unaffected.`)) return;
+    setSettings(previous => ({ ...previous, historyRetention: value }));
+    showToast('History settings saved; cleanup runs on SQL sync.', 'success');
+  };
+  return html`<section class="card history-retention-settings"><h3>History retention</h3><p>Automatically remove older history. Private Accounts activity is kept separately.</p>
+    <div class="history-retention-fields">${[['activityDays','Activity history'],['attendanceDays','Attendance history']].map(([key,label]) => html`<label key=${key}>${label}<div><input class="input-field" type="number" min="1" max="3650" step="1" value=${draft[key]} onInput=${event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} /><span>days</span></div></label>`)}</div>
+    <small>Attendance includes today. Cleanup runs during online sync and when the app reconnects. Deleted history cannot be recovered by increasing these limits.</small>
+    ${Number(draft.attendanceDays) <= LMS.attendanceAlertConfig(settings).days && html`<small>For reliable absence alerts, keep attendance longer than the ${LMS.attendanceAlertConfig(settings).days}-day alert threshold. Deleted dates cannot prove absence.</small>`}
+    <button class="btn btn-primary" onClick=${save}>Save history limits</button></section>`;
+};
+
 LMS.Settings = ({ onLogout }) => {
   const { settings, setSettings, shifts, setShifts, students, setStudents, payments, setPayments, halls, setHalls, activityLog, addLog, showToast } = useContext(LMS.AppContext);
   const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '' });
@@ -192,6 +211,7 @@ LMS.Settings = ({ onLogout }) => {
 
   return html`<div class="space-y-6">
     <${LMS.AttendanceAlertSettings} key=${LMS.DB.scope} />
+    <${LMS.HistoryRetentionSettings} key=${LMS.DB.scope} />
     <${LMS.SqlMigrationPanel} />
     <${LMS.AccountsSecurity} />
     <${LMS.ScreenLockSettings} />

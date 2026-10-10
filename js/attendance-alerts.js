@@ -43,7 +43,10 @@ LMS.buildAttendanceAlerts = (students, attendance, settings, today = LMS.today()
     if (membershipStart > today) return [];
     const recordedPresent = lastPresentById.get(String(student.id));
     const lastPresent = recordedPresent && recordedPresent >= membershipStart ? recordedPresent : null;
-    const baseline = lastPresent || (membershipStart > trackingStart ? membershipStart : trackingStart);
+    // Deleted history is unknown, not proof that a student never attended.
+    const retainedStart = new Date(Date.parse(today + 'T00:00:00Z') - (LMS.historyRetention(settings).attendanceDays - 1) * 86400000).toISOString().slice(0, 10);
+    const observedStart = membershipStart > trackingStart ? membershipStart : trackingStart;
+    const baseline = lastPresent || (observedStart > retainedStart ? observedStart : retainedStart);
     const days = LMS.attendanceElapsedDays(baseline, today, config);
     const action = student.attendanceAlert || {};
     const actionApplies = LMS.validDate(action.startedOn) && action.startedOn >= membershipStart && (!lastPresent || lastPresent < action.startedOn);

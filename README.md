@@ -26,3 +26,9 @@ Never publish `server/`, `migration/`, `.private-migration/`, `.env` files, cred
 The current compatibility layer downloads record metadata in bounded pages on first login; subsequent logins use incremental changes. It still caches the library metadata locally. Large-library server-only pagination is a separate optimisation; 20,000-student performance has not been established.
 
 The SQL release was published without new tests or browser verification at the owner's request.
+
+## Frontend release 71
+
+Adds responsive Counter/Purse screens, Activity filter switches, configurable history limits (Activity 5 days; Attendance 90 days by default), top-of-page navigation, and safe pending-payment review.
+
+This repository contains the public frontend only. The matching private backend and additive cashbook schema must be deployed separately before Counter/Purse, SQL history cleanup, and detailed payment validation responses become available. GitHub Pages publishing does not perform that backend upgrade.

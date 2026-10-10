@@ -11,6 +11,7 @@ LMS.LiveClock = () => {
 };
 
 LMS.Dashboard = ({ setCurrentPage }) => {
+  const [cashOpen,setCashOpen] = useState(false);
   const { students, payments, halls, shifts, settings, activityLog, openNewAdmission, openStudent } = useContext(LMS.AppContext);
   const [showTodayCollection, setShowTodayCollection] = useState(false);
   const [expandedDues, setExpandedDues] = useState({});
@@ -92,7 +93,10 @@ LMS.Dashboard = ({ setCurrentPage }) => {
       <button class="btn btn-secondary quick-action quick-action-payment" onClick=${() => setCurrentPage('payments')}><span class="quick-action-icon" aria-hidden="true"><${Icons.Payments} /></span>Record payment</button>
       <button class="btn btn-secondary quick-action quick-action-attendance" onClick=${() => setCurrentPage('attendance')}><span class="quick-action-icon" aria-hidden="true"><${Icons.Check} /></span>Take attendance</button>
       <button class="btn btn-secondary quick-action quick-action-work" onClick=${() => setCurrentPage('activity')}><span class="quick-action-icon" aria-hidden="true"><${Icons.Log} /></span>Pending work</button>
+      <button class="btn btn-secondary quick-action quick-action-expense" onClick=${()=>setCashOpen(true)}><span class="quick-action-icon" aria-hidden="true"><${Icons.Payments}/></span>Add expense</button>
     </div>
+    <${LMS.CashDashboard}/>
+    <${LMS.Modal} isOpen=${cashOpen} onClose=${()=>setCashOpen(false)} title="Counter & Purse" size="xl">${cashOpen&&html`<${LMS.CashWorkspace}/>`}</${LMS.Modal}>
     <div class="metrics-grid">
       <div class="card metric-card metric-students"><div class="metric-top">Active students<span class="metric-icon"><${Icons.Students} /></span></div><div class="metric-value">${activeStudents}</div><div class="metric-foot">${students.length} students in your directory</div></div>
       <div class="card metric-card metric-occupied"><div class="metric-top">Reserved seats<span class="metric-icon"><${Icons.Seats} /></span></div><div class="metric-value">${occupiedSeats}<span style=${{fontSize:'14px',color:'var(--text-light)',fontWeight:400}}> / ${reservableSeats}</span></div><div class="metric-foot">${reservableSeats} reservable · ${reservations} student reservations</div></div>

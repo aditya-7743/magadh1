@@ -127,6 +127,15 @@ LMS.App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const route = LMS.useRoute();
   const currentPage = route.page, setCurrentPage = LMS.navigatePage;
+  useEffect(() => {
+    const reset = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.getElementById('main-content')?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    };
+    reset();
+    const frame = requestAnimationFrame(reset);
+    return () => cancelAnimationFrame(frame);
+  }, [currentPage]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);

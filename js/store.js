@@ -43,17 +43,19 @@ LMS.Store = {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('records', 'readwrite'), store = tx.objectStore('records');
-      let queue;
+      let queue, failure;
       const request = store.get(scope + '|offline_queue');
       request.onsuccess = () => {
-        queue = transformQueue(request.result || []);
-        changes.forEach(({ key, value, remove }) => {
-          if (remove) store.delete(scope + '|' + key); else store.put(value, scope + '|' + key);
-        });
-        store.put(queue, scope + '|offline_queue');
+        try {
+          queue = transformQueue(request.result || []);
+          changes.forEach(({ key, value, remove }) => {
+            if (remove) store.delete(scope + '|' + key); else store.put(value, scope + '|' + key);
+          });
+          store.put(queue, scope + '|offline_queue');
+        } catch (error) { failure = error; tx.abort(); }
       };
       tx.oncomplete = () => resolve(queue);
-      tx.onabort = tx.onerror = () => reject(tx.error || new Error('Storage transaction failed'));
+      tx.onabort = tx.onerror = () => reject(failure || tx.error || new Error('Storage transaction failed'));
     });
   }
 };

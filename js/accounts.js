@@ -10,10 +10,11 @@ LMS.PrivateAccounts = () => {
   const [data, setData] = useState(null), [error, setError] = useState('');
   useEffect(() => {
     let cancelled = false;
-    Promise.all([LMS.AccountAccess.list('expenses'), LMS.AccountAccess.list('activityLog')]).then(([expenses, activityLog]) => {
+    const reload=()=>Promise.all([LMS.AccountAccess.list('expenses'), LMS.AccountAccess.list('activityLog')]).then(([expenses, activityLog]) => {
       if (!cancelled) setData({ expenses, activityLog });
     }).catch(e => { if (!cancelled) setError(e.message); });
-    return () => { cancelled = true; };
+    reload();window.addEventListener('lms-cash-updated',reload);
+    return () => { cancelled = true;window.removeEventListener('lms-cash-updated',reload); };
   }, []);
   const logAccount = async (action, category) => {
     const row = await LMS.AccountAccess.log(action, category);
@@ -36,11 +37,11 @@ LMS.PrivateAccounts = () => {
 LMS.AccountsContent = () => {
   const { payments, students, showToast } = useContext(LMS.AppContext);
   const { expenses, logAccount: writeLog, saveExpense } = useContext(LMS.AccountsContext);
-  const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'activity', 'security']);
+  const [tab, setTab] = LMS.useRouteParam('tab', 'overview', ['overview', 'cash', 'activity', 'security']);
   const today = LMS.today();
   const [period, setPeriod] = useState('month');
   const [custom, setCustom] = useState({ from: today.slice(0, 7) + '-01', to: today });
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState(true);
   const [search, setSearch] = useState('');
   const [limit, setLimit] = useState(20);
   const [busy, setBusy] = useState(false);
@@ -83,26 +84,31 @@ LMS.AccountsContent = () => {
   const money = value => hidden ? '••••' : LMS.formatCurrency(value);
   const selectPeriod = value => { setPeriod(value); setLimit(20); log('Accounts report period: ' + value); };
   const startEdit = row => {
-    setEditing(row); setForm({ amount: String(row.amount), note: row.note || row.description || '', date: dateKey(row.date), category: row.category || 'Other' });
+    if(row.cashEntryId){setTab('cash');showToast('Use Void entry, then record the corrected expense.');return;}
+    setEditing(row); setForm({ amount: String(row.amount), note: row.note || row.description || '', date: dateKey(row.date), category: row.category || 'Other', cashSource:row.cashSource||(String(row.method).toLowerCase()==='online'?'bank':'counter') });
     noteRef.current?.focus(); noteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
   const save = async e => {
     e.preventDefault(); if (busy) return;
     if (!LMS.validDate(form.date) || !Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0 || !form.note.trim()) { showToast('Enter a valid date, amount and description.', 'error'); return; }
-    const value = { ...(editing || {}), id: editing?.id || LMS.generateId(), amount: Number(form.amount), date: form.date, note: form.note.trim(), category: form.category };
+    if(!editing){setTab('cash');return;}
+    const value = { ...(editing || {}), id: editing?.id || LMS.generateId(), amount: Number(form.amount), date: form.date, note: form.note.trim(), category: form.category, cashSource:form.cashSource||'counter' };
     setBusy(true);
     try {
       await saveExpense(value, editing, `${editing ? 'Updated' : 'Added'} expense: ${LMS.formatCurrency(value.amount)} (${value.note}) · ${LMS.formatDate(value.date)}`);
       setEditing(null); setForm(blank()); showToast('Expense saved.', 'success');
+      window.dispatchEvent(new Event('lms-cash-updated'));
     } catch (error) { showToast(error.message, 'error'); } finally { setBusy(false); }
   };
   const remove = async row => {
+    if(row.cashEntryId){setTab('cash');showToast('Use Void entry in the cash ledger to preserve its history.');return;}
     if (busy || !confirm('Delete this expense entry?')) return;
     setBusy(true);
     try {
       await saveExpense({ ...row, _deleted: true }, row, `Deleted expense: ${LMS.formatCurrency(row.amount)} (${row.note || row.description || ''})`);
       if (editing?.id === row.id) { setEditing(null); setForm(blank()); }
       showToast('Expense deleted.', 'success');
+      window.dispatchEvent(new Event('lms-cash-updated'));
     } catch (error) { showToast(error.message, 'error'); } finally { setBusy(false); }
   };
   const exportReport = () => {
@@ -119,9 +125,9 @@ LMS.AccountsContent = () => {
   return html`<div class="accounts-workspace">
     <header class="accounts-hero"><div><span class="accounts-eyebrow">PRIVATE WORKSPACE</span><h1>Accounts</h1><p>Know what came in, what went out, and what remains.</p></div><button class="accounts-lock" onClick=${() => LMS.AccountAccess.logout().catch(error => showToast(error.message, 'error'))}>Lock Accounts</button></header>
     <nav class="accounts-tabs" aria-label="Accounts sections">
-      ${[['overview','Overview'],['activity','Accounts Activity'],['security','Access & password']].map(([key, label]) => html`<button key=${key} class=${tab === key ? 'active' : ''} aria-current=${tab === key ? 'page' : undefined} onClick=${() => setTab(key)}>${label}</button>`)}
+      ${[['overview','Overview'],['cash','Counter & Purse'],['activity','Accounts Activity'],['security','Access & password']].map(([key, label]) => html`<button key=${key} class=${tab === key ? 'active' : ''} aria-current=${tab === key ? 'page' : undefined} onClick=${() => setTab(key)}>${label}</button>`)}
     </nav>
-    ${tab === 'activity' ? html`<${LMS.AccountsActivity} />` : tab === 'security' ? html`<${LMS.AccountsSecurity} />` : html`
+    ${tab === 'cash' ? html`<${LMS.CashWorkspace}/>` : tab === 'activity' ? html`<${LMS.AccountsActivity} />` : tab === 'security' ? html`<${LMS.AccountsSecurity} />` : html`
       <section class="accounts-toolbar"><div class="accounts-periods" aria-label="Report period">${[['today','Today'],['week','Last 7 days'],['month','This month'],['year','This year'],['custom','Custom']].map(([key,label]) => html`<button key=${key} aria-pressed=${period === key} class=${period === key ? 'active' : ''} onClick=${() => selectPeriod(key)}>${label}</button>`)}</div><div class="accounts-tools"><button aria-label=${hidden ? 'Show amounts' : 'Hide amounts'} onClick=${() => { setHidden(!hidden); log(hidden ? 'Shown Accounts amounts' : 'Hidden Accounts amounts', 'collections'); }}>${hidden ? html`<${LMS.Icons.Eye} />` : html`<${LMS.Icons.EyeOff} />`}</button><button disabled=${!validRange || hidden} onClick=${exportReport}>Export CSV ↗</button></div>
         ${period === 'custom' && html`<div class="accounts-dates"><label>From<input type="date" value=${custom.from} onChange=${e => { setCustom(p => ({ ...p, from: e.target.value })); setLimit(20); }} /></label><label>To<input type="date" value=${custom.to} onChange=${e => { setCustom(p => ({ ...p, to: e.target.value })); setLimit(20); }} /></label></div>`}
       </section>
@@ -139,12 +145,13 @@ LMS.AccountsContent = () => {
           <div class="accounts-chart-footer"><span>Expense share of collections</span><strong>${hidden ? '••••' : report.collected > 0 ? Math.round(report.spent / report.collected * 100) + '%' : '—'}</strong></div>
         </section>
         <section class="accounts-panel accounts-entry"><div class="accounts-panel-title"><div><h2>${editing ? 'Edit expense' : 'Add an expense'}</h2><p>Keep every outgoing amount accounted for.</p></div><span class="accounts-entry-icon">₹</span></div>
-          <form onSubmit=${save} class="accounts-expense-form"><fieldset disabled=${busy}>
+          ${!editing?html`<div class="cash-empty"><p>Add a categorized expense, salary payment, or record a cash transfer in your cash desk.</p><button class="btn btn-primary" onClick=${()=>setTab('cash')}>+ Open Counter & Purse</button></div>`:html`<form onSubmit=${save} class="accounts-expense-form"><fieldset disabled=${busy}>
             <div class="accounts-form-pair"><label>Amount (₹)<input class="input-field" type="number" min="0.01" step="0.01" required placeholder="0.00" value=${form.amount} onChange=${e => setForm(p => ({ ...p, amount: e.target.value }))} /></label><label>Date<input class="input-field" type="date" required value=${form.date} onChange=${e => setForm(p => ({ ...p, date: e.target.value }))} /></label></div>
             <label>Description<input ref=${noteRef} class="input-field" required maxLength="300" placeholder="e.g. Electricity bill — October" value=${form.note} onChange=${e => setForm(p => ({ ...p, note: e.target.value }))} /></label>
             <label>Category<select class="input-field" value=${form.category} onChange=${e => setForm(p => ({ ...p, category: e.target.value }))}>${[...new Set([...categories, form.category])].map(category => html`<option key=${category}>${category}</option>`)}</select></label>
+            <label>Paid from<select class="input-field" value=${form.cashSource} onChange=${e=>setForm(p=>({...p,cashSource:e.target.value}))}><option value="counter">Counter cash</option><option value="purse">Purse cash</option><option value="bank">Bank / online</option></select></label>
             <div class="accounts-form-actions"><button class="btn btn-primary" type="submit">${busy ? 'Saving…' : editing ? 'Save changes' : '+ Add expense'}</button>${editing && html`<button type="button" class="btn btn-secondary" onClick=${() => { setEditing(null); setForm(blank()); }}>Cancel</button>`}</div>
-          </fieldset></form>
+          </fieldset></form>`}
         </section>
       </div>
       <section class="accounts-panel"><div class="accounts-panel-title"><div><h2>Expense ledger <span>${visibleExpenses.length}</span></h2><p>Find, edit and manage expenses for this period.</p></div><input class="input-field accounts-expense-search" type="search" aria-label="Search expenses" placeholder="Search description, category, amount…" value=${search} onChange=${e => { setSearch(e.target.value); setLimit(20); }} /></div>

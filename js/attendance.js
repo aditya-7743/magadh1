@@ -39,6 +39,7 @@ LMS.Attendance = () => {
   // Feature 2: History viewer state
   const [historyRoll, setHistoryRoll] = useState('');
   const [historyMonths, setHistoryMonths] = useState(3);
+  const historyStart = LMS.attendanceHistoryStart();
 
   // Filter active students
   const activeStudents = useMemo(() => students.filter(s => s.isActive !== false), [students]);
@@ -61,6 +62,7 @@ LMS.Attendance = () => {
     e.preventDefault();
     const attStatus = (e.nativeEvent?.submitter || e.submitter)?.value !== 'absent';
     if (!LMS.validDate(selectedDate)) { showToast('Select a valid date.', 'error'); return; }
+    if (selectedDate < LMS.attendanceHistoryStart()) { showToast('This date is outside your attendance history limit. Change the limit in Settings first.', 'error'); return; }
     if (!attRoll.trim()) { showToast('Please enter a roll number', 'error'); return; }
     if (attRoll.trim().length > 100 || /[.#$\[\]\/]/.test(attRoll)) { showToast('Enter a valid roll number.', 'error'); return; }
 
@@ -117,6 +119,7 @@ LMS.Attendance = () => {
   };
 
   const toggleAttendance = (studentId) => {
+    if (selectedDate < LMS.attendanceHistoryStart()) { showToast('This date is outside your attendance history limit.', 'error'); return; }
     const current = LMS.DB.localLoad('attendance', {})[selectedDate]?.[studentId];
     const next = current === true ? false : current === false ? null : true;
     LMS.DB.childSave('attendance', `${selectedDate}/${studentId}`, next).catch(error => LMS.DB.fail(error));
@@ -187,6 +190,7 @@ LMS.Attendance = () => {
       const days = [];
       for (let day = 1; day <= lastDay; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (dateStr < historyStart) continue;
         const dayAtt = attendance[dateStr] || {};
         let status = 'notTaken';
         if (dayAtt[historyStudent.id] === true) { status = 'present'; present++; }
@@ -196,10 +200,10 @@ LMS.Attendance = () => {
       }
       const total = present + absent;
       const pct = total > 0 ? Math.round((present / total) * 100) : 0;
-      months.push({ monthName, days, present, absent, notTaken, total, pct });
+      if (days.length) months.push({ monthName, days, present, absent, notTaken, total, pct });
     }
     return months;
-  }, [historyStudent, historyMonths, attendance]);
+  }, [historyStudent, historyMonths, attendance, historyStart]);
 
   // Overall stats for history
   const overallStats = useMemo(() => {
@@ -324,6 +328,7 @@ LMS.Attendance = () => {
       </div>
 
       ${historyStudent && html`
+        <p class="text-sm text-gray-500 mb-3">History retained from ${LMS.formatDate(historyStart)} · ${LMS.historyRetention(settings).attendanceDays} days. Older dates are excluded from these totals.</p>
         <!-- Month filter buttons -->
         <div class="flex gap-2 mb-5">
           ${[3, 6, 12].map(m => html`

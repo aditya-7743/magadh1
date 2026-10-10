@@ -43,13 +43,29 @@ LMS.accountActivityCategory = log => {
   if (!log || typeof log !== 'object') return '';
   const category = String(log.category || '').toLowerCase();
   if (log.section === 'accounts') return category || 'accounts';
+  if (log.section === 'counter') return 'expenses';
   if (!LMS.isVisibleActivity(log)) return /analytics/i.test(category + ' ' + (log.action || '')) ? 'analytics' : 'expenses';
   if (/^(?:(?:added|updated|deleted) payment\b|waived fee\b|reset student & archived payments:)/i.test(String(log.action || '').trim())) return 'collections';
   return '';
 };
 
 // Record storage/import order is not chronological. Sort a copy before limiting it.
-LMS.latestActivity = (logs, limit, predicate = LMS.isVisibleActivity) => Object.values(logs || {})
+LMS.activityCategory = log => {
+  const action = String(log?.action || '').trim();
+  if (/^(?:(?:added|updated|deleted) payment\b|waived fee\b|reset student & archived payments:)/i.test(action)) return 'payments';
+  if (/^(?:added|updated|edited) student\b/i.test(action)) return 'students';
+  if (log?.section === 'counter' && /^Counter expense:/i.test(action)) return 'staffExpenses';
+  if (/^Attendance:/i.test(action)) return 'attendance';
+  return 'misc';
+};
+LMS.historyRetention = (settings = LMS.DB?.localLoad('settings', {}) || {}) => {
+  const days = (value, fallback) => Number.isInteger(value) && value >= 1 && value <= 3650 ? value : fallback;
+  return { activityDays: days(settings.historyRetention?.activityDays, 5), attendanceDays: days(settings.historyRetention?.attendanceDays, 90) };
+};
+LMS.attendanceHistoryStart = () => new Date(Date.now() + 19800000 - (LMS.historyRetention().attendanceDays - 1) * 86400000).toISOString().slice(0, 10);
+LMS.isRecentActivity = (log, now = Date.now()) => !log?._deleted && LMS.isVisibleActivity(log) &&
+  new Date(log.timestamp).getTime() >= now - LMS.historyRetention().activityDays * 86400000;
+LMS.latestActivity = (logs, limit, predicate = LMS.isRecentActivity) => Object.values(logs || {})
   .filter(predicate)
   .map((log, index) => {
     const timestamp = new Date(log.timestamp || 0).getTime();

@@ -1,6 +1,59 @@
 // ==================== PAYMENTS.JS - Payment Management ====================
 window.LMS = window.LMS || {};
 
+// A rejected SQL transaction stays intact until the operator corrects its payment.
+// Never discard the queue, infer a date, or change a financial amount automatically.
+LMS.PendingPaymentRepair = () => {
+  const [open, setOpen] = useState(false), [draft, setDraft] = useState(null), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  const begin = () => {
+    const operation = LMS.DB.localLoad('offline_queue', [])[0];
+    const candidates = (operation?.changes || []).filter(change => change.key === 'payments' && !change.value?._deleted);
+    const paymentId = LMS.DB.paymentSyncIssue?.paymentId;
+    const invalid = value => value.amount == null || value.amount === '' || !Number.isFinite(Number(value.amount)) || Number(value.amount) < 0 || !Number.isFinite(Number(value.discount ?? 0)) || Number(value.discount ?? 0) < 0 || !LMS.validDate(value.date);
+    const change = paymentId ? candidates.find(change => change.id === paymentId) : candidates.find(change => invalid(change.value));
+    if (!change) { setMessage('The server has not identified the rejected payment. Retry sync after the server update; no pending records were changed.'); return; }
+    setDraft({ scope: LMS.DB.scope, operationId: operation.id, id: change.id, original: JSON.stringify(change.value), amount: String(change.value.amount ?? ''), discount: String(change.value.discount ?? 0), date: String(change.value.date || ''), name: change.value.studentName || LMS.DB.localLoad('students', []).find(student => student.id === change.value.studentId)?.name || change.id, roll: change.value.rollNo || '' });
+    setMessage(''); setOpen(true);
+  };
+  const save = async () => {
+    if (!draft.amount.trim() || !draft.discount.trim() || !Number.isFinite(Number(draft.amount)) || Number(draft.amount) < 0 || !Number.isFinite(Number(draft.discount)) || Number(draft.discount) < 0 || !LMS.validDate(draft.date)) { setMessage('Enter non-negative amounts and a valid YYYY-MM-DD date.'); return; }
+    const db = LMS.DB;
+    if (db.processing || db.pending.length || db.switching || db.scope !== draft.scope) { setMessage('Wait for saving to finish, then reopen this review.'); return; }
+    if (!confirm(`Correct this pending payment for ${draft.name} to ₹${draft.amount}, discount ₹${draft.discount}, dated ${draft.date}? The original queued entry will be retained locally for recovery.`)) return;
+    db.processing = true; setBusy(true);
+    try {
+      await db.writing;
+      const operation = db.localLoad('offline_queue', [])[0];
+      const change = operation?.changes.find(change => change.key === 'payments' && change.id === draft.id);
+      if (operation?.id !== draft.operationId || !change || JSON.stringify(change.value) !== draft.original) throw new Error('Pending data changed. Close and reopen this review.');
+      const value = { ...change.value, amount: Number(draft.amount), discount: Number(draft.discount), date: draft.date };
+      const replacement = { ...operation, id: crypto.randomUUID(), changes: operation.changes.map(item => item === change ? { ...item, value } : item) };
+      const current = db.localLoad('payments', []).find(payment => payment.id === draft.id);
+      const replaceLocal = current?._rev === change.value._rev;
+      const writes = [{ key: '_paymentRepair/' + operation.id, value: { original: operation, corrected: replacement, repairedAt: new Date().toISOString() } }];
+      if (replaceLocal) writes.push({ key: 'payments/' + draft.id, value });
+      const queue = await LMS.Store.commit(draft.scope, writes, queue => {
+        if (queue[0]?.id !== operation.id || JSON.stringify(queue[0].changes) !== JSON.stringify(operation.changes)) throw new Error('Another tab changed the queue. Reopen the review.');
+        return [replacement, ...queue.slice(1)];
+      });
+      if (db.scope === draft.scope) {
+        db.cache.offline_queue = queue;
+        if (replaceLocal) db.cache.payments = db.localLoad('payments', []).map(payment => payment.id === draft.id ? value : payment);
+        db.notify('payments'); db.channel?.postMessage({ scope: draft.scope });
+      }
+      setOpen(false); setMessage('Correction saved. Retrying SQL sync…');
+    } catch (error) { setMessage(error.message); }
+    finally { db.processing = false; setBusy(false); db.notify('status'); }
+    if (db.scope === draft.scope) await db.processOfflineQueue();
+  };
+  return html`<div><button class="btn btn-secondary btn-sm" onClick=${begin}>Review pending payment</button>${message && html`<p role="status">${message}</p>`}
+    <${LMS.Modal} isOpen=${open} onClose=${() => !busy && setOpen(false)} title="Correct pending payment" size="sm">
+      ${draft && html`<div class="space-y-4"><p><strong>${draft.name}</strong> ${draft.roll && '· Roll ' + draft.roll}</p>${LMS.DB.paymentSyncIssue?.fields?.length && html`<p class="text-sm">Fields needing correction: ${LMS.DB.paymentSyncIssue.fields.join(', ')}</p>`}<p class="text-sm">Original stored date: ${JSON.parse(draft.original).date || '(missing)'}. Correct only after checking the receipt.</p>
+      ${[['amount','Received amount (₹)','number'],['discount','Discount (₹)','number'],['date','Payment date','date']].map(([key,label,type]) => html`<label class="block" key=${key}>${label}<input class="input-field" type=${type} min=${type === 'number' ? '0' : undefined} step=${type === 'number' ? '0.01' : undefined} value=${draft[key]} onInput=${event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} /></label>`)}
+      <p class="text-sm">All other pending changes stay in their original order.</p>${message && html`<p role="status">${message}</p>`}<button class="btn btn-primary" disabled=${busy} onClick=${save}>${busy ? 'Saving…' : 'Save correction & retry'}</button></div>`}
+    </${LMS.Modal}></div>`;
+};
+
 // Standalone Payment Form for adding/editing payments from student cards
 LMS.PaymentForm = ({ student, payment, onClose }) => {
   const { payments, setPayments, addLog, showToast, settings } = useContext(LMS.AppContext);

@@ -2,14 +2,23 @@
 window.LMS = window.LMS || {};
 
 LMS.ActivityLog = () => {
-  const { activityLog, pendingWork, setPendingWork, showToast } = useContext(LMS.AppContext);
+  const { activityLog, pendingWork, setPendingWork, showToast, settings } = useContext(LMS.AppContext);
   const { Card, Input, Button, Modal } = LMS;
 
   const [newWork, setNewWork] = useState('');
   const [showClearAuth, setShowClearAuth] = useState(false);
   const [clearPass, setClearPass] = useState('');
 
-  const recentLogs = useMemo(() => LMS.latestActivity(activityLog, 100), [activityLog]);
+  const filters = [['payments', 'Payments'], ['students', 'Student add/edit'], ['staffExpenses', 'Staff expenses'], ['attendance', 'Attendance'], ['misc', 'Misc']];
+  const [selected, setSelected] = useState(['payments', 'students']);
+  const [clock, setClock] = useState(Date.now());
+  const [visibleCount, setVisibleCount] = useState(100);
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 60000); return () => clearInterval(timer); }, []);
+  const days = LMS.historyRetention(settings).activityDays;
+  const availableLogs = useMemo(() => LMS.latestActivity(activityLog, Infinity, log => LMS.isRecentActivity(log, clock)), [activityLog, clock, days]);
+  const filteredLogs = availableLogs.filter(log => selected.includes(LMS.activityCategory(log)));
+  const recentLogs = filteredLogs.slice(0, visibleCount);
+  const toggleFilter = key => { setSelected(prev => prev.includes(key) ? prev.filter(value => value !== key) : [...prev, key]); setVisibleCount(100); };
 
   const handleAddWork = (e) => {
     e.preventDefault();
@@ -95,15 +104,21 @@ LMS.ActivityLog = () => {
     <!-- Activity Log -->
     <div class="space-y-4">
       <h3 class="font-bold text-lg">Activity history</h3>
-      <p class="text-sm text-gray-500">Latest ${recentLogs.length} activities · newest first</p>
+      <p class="text-sm text-gray-500">Last ${days} days · ${filteredLogs.length} matching activities · newest first</p>
+      <div class="activity-filters" aria-label="Activity filters">
+        ${filters.map(([key, label]) => html`<button key=${key} type="button" role="switch" aria-checked=${selected.includes(key)} class="activity-filter ${selected.includes(key) ? 'is-on' : ''}" onClick=${() => toggleFilter(key)}>
+          <span class="activity-switch" aria-hidden="true"></span><span>${label}</span><span class="activity-filter-count">${availableLogs.filter(log => LMS.activityCategory(log) === key).length}</span>
+        </button>`)}
+      </div>
       <${Card}>
         <div class="space-y-1 max-h-96 overflow-y-auto">
-          ${recentLogs.length > 0 ? recentLogs.map((log, i) => html`<div key=${i} class="flex justify-between items-center p-3 rounded-lg" style=${{ background: i % 2 === 0 ? 'var(--surface-soft)' : 'var(--bg-card)', borderBottom: '1px solid var(--border-color)' }}>
+          ${recentLogs.length > 0 ? recentLogs.map((log, i) => html`<div key=${log.id || i} class="activity-history-row" style=${{ background: i % 2 === 0 ? 'var(--surface-soft)' : 'var(--bg-card)' }}>
             <span class="text-sm text-gray-800">${log.action}</span>
             <span class="text-sm text-gray-400 mono">${LMS.formatDate(log.timestamp)} ${new Date(log.timestamp).toLocaleTimeString()}</span>
           </div>`)
-      : html`<p class="text-center py-8 text-gray-400">No activity yet</p>`}
+      : html`<p class="text-center py-8 text-gray-400">${selected.length ? 'No matching activity in the selected history period.' : 'Turn on a filter to see activity.'}</p>`}
         </div>
+        ${filteredLogs.length > visibleCount && html`<button class="activity-load-more" onClick=${() => setVisibleCount(count => count + 100)}>Show more (${filteredLogs.length - visibleCount} remaining)</button>`}
       </${Card}>
     </div>
     
