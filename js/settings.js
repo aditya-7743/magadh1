@@ -118,7 +118,6 @@ LMS.Settings = ({ onLogout }) => {
     const scope = LMS.DB.scope;
     try {
       if (LMS.DB.sqlMode) {
-        if (!LMS.AccountAccess.session()) await LMS.AccountAccess.login();
         if (scope !== LMS.DB.scope) throw new Error('Library account changed. Start the backup again.');
         const data = await LMS.DB.completeSqlBackup();
         if (scope !== LMS.DB.scope) throw new Error('Library account changed. Start the backup again.');
@@ -396,7 +395,7 @@ LMS.Settings = ({ onLogout }) => {
         <${Button} onClick=${fixDuplicates} className="bg-red-500 hover:bg-red-600 text-white"><${Icons.Trash} /> Repair Duplicates</${Button}>
       </div>
       
-      <p class="text-sm">SQL backup downloads as a complete JSON file, including photos and payment history. Personal Accounts verification and completed sync are required.</p>
+      <p class="text-sm">SQL backup downloads as a complete JSON file, including photos and payment history. Your library login and completed sync are required; no separate personal email verification.</p>
       ${backupError && html`<p role="alert" class="cash-error">${backupError} No complete backup was downloaded. Your pending changes remain on this device.</p>`}
       ${backupFile && html`<div class="cash-notice" role="status"><p>Backup ready: ${backupFile.name}</p><a class="btn btn-primary" href=${backupFile.url} download=${backupFile.name}>Download backup</a><p class="text-sm">If the automatic download was blocked, tap this link. Check your Downloads folder after saving.</p></div>`}
       <div class="mt-4 pt-4 border-t">
