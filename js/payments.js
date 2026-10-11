@@ -10,9 +10,12 @@ LMS.PendingPaymentRepair = () => {
     const candidates = (operation?.changes || []).filter(change => change.key === 'payments' && !change.value?._deleted);
     const paymentId = LMS.DB.paymentSyncIssue?.paymentId;
     const invalid = value => value.amount == null || value.amount === '' || !Number.isFinite(Number(value.amount)) || Number(value.amount) < 0 || !Number.isFinite(Number(value.discount ?? 0)) || Number(value.discount ?? 0) < 0 || !LMS.validDate(value.date);
-    const change = paymentId ? candidates.find(change => change.id === paymentId) : candidates.find(change => invalid(change.value));
+    // One atomic operation can contain multiple revisions of the same payment.
+    // Review the invalid revision, not the first (possibly valid) copy.
+    const matching = paymentId ? candidates.filter(change => change.id === paymentId) : candidates;
+    const change = matching.find(change => invalid(change.value)) || (paymentId ? matching[0] : null);
     if (!change) { setMessage('The server has not identified the rejected payment. Retry sync after the server update; no pending records were changed.'); return; }
-    setDraft({ scope: LMS.DB.scope, operationId: operation.id, id: change.id, original: JSON.stringify(change.value), amount: String(change.value.amount ?? ''), discount: String(change.value.discount ?? 0), date: String(change.value.date || ''), name: change.value.studentName || LMS.DB.localLoad('students', []).find(student => student.id === change.value.studentId)?.name || change.id, roll: change.value.rollNo || '' });
+    setDraft({ scope: LMS.DB.scope, operationId: operation.id, changeIndex: operation.changes.indexOf(change), id: change.id, original: JSON.stringify(change.value), amount: String(change.value.amount ?? ''), discount: String(change.value.discount ?? 0), date: String(change.value.date || ''), name: change.value.studentName || LMS.DB.localLoad('students', []).find(student => student.id === change.value.studentId)?.name || change.id, roll: change.value.rollNo || '' });
     setMessage(''); setOpen(true);
   };
   const save = async () => {
@@ -24,7 +27,7 @@ LMS.PendingPaymentRepair = () => {
     try {
       await db.writing;
       const operation = db.localLoad('offline_queue', [])[0];
-      const change = operation?.changes.find(change => change.key === 'payments' && change.id === draft.id);
+      const change = operation?.changes[draft.changeIndex];
       if (operation?.id !== draft.operationId || !change || JSON.stringify(change.value) !== draft.original) throw new Error('Pending data changed. Close and reopen this review.');
       const value = { ...change.value, amount: Number(draft.amount), discount: Number(draft.discount), date: draft.date };
       const replacement = { ...operation, id: crypto.randomUUID(), changes: operation.changes.map(item => item === change ? { ...item, value } : item) };
@@ -44,12 +47,17 @@ LMS.PendingPaymentRepair = () => {
       setOpen(false); setMessage('Correction saved. Retrying SQL sync…');
     } catch (error) { setMessage(error.message); }
     finally { db.processing = false; setBusy(false); db.notify('status'); }
-    if (db.scope === draft.scope) await db.processOfflineQueue();
+    if (db.scope === draft.scope) {
+      const saved = await db.processOfflineQueue();
+      if (!saved) setMessage('Sync is still blocked. Reopen Review to see the currently rejected payment and queued revision; it may be a different entry.');
+    }
   };
   return html`<div><button class="btn btn-secondary btn-sm" onClick=${begin}>Review pending payment</button>${message && html`<p role="status">${message}</p>`}
     <${LMS.Modal} isOpen=${open} onClose=${() => !busy && setOpen(false)} title="Correct pending payment" size="sm">
       ${draft && html`<div class="space-y-4"><p><strong>${draft.name}</strong> ${draft.roll && '· Roll ' + draft.roll}</p>${LMS.DB.paymentSyncIssue?.fields?.length && html`<p class="text-sm">Fields needing correction: ${LMS.DB.paymentSyncIssue.fields.join(', ')}</p>`}<p class="text-sm">Original stored date: ${JSON.parse(draft.original).date || '(missing)'}. Correct only after checking the receipt.</p>
       ${[['amount','Received amount (₹)','number'],['discount','Discount (₹)','number'],['date','Payment date','date']].map(([key,label,type]) => html`<label class="block" key=${key}>${label}<input class="input-field" type=${type} min=${type === 'number' ? '0' : undefined} step=${type === 'number' ? '0.01' : undefined} value=${draft[key]} onInput=${event => setDraft(previous => ({ ...previous, [key]: event.target.value }))} /></label>`)}
+      <p class="text-sm">Payment ID: ${draft.id} · Queue entry: ${draft.operationId} · Revision: ${draft.changeIndex + 1}</p>
+      <p class="text-sm">Stored date (exact): <code>${JSON.stringify(JSON.parse(draft.original).date)}</code>. Required storage format: YYYY-MM-DD.</p>
       <p class="text-sm">All other pending changes stay in their original order.</p>${message && html`<p role="status">${message}</p>`}<button class="btn btn-primary" disabled=${busy} onClick=${save}>${busy ? 'Saving…' : 'Save correction & retry'}</button></div>`}
     </${LMS.Modal}></div>`;
 };
