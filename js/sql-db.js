@@ -171,12 +171,10 @@
     return LMS.SqlApi.backup();
   };
   db.exportBackup = async function() {
-    try {
       const data = await this.completeSqlBackup();
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
       const link = document.createElement('a'); link.href = url;
       link.download = 'library_sql_backup_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
-      link.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch (error) { this.fail(error); }
+      document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 })();

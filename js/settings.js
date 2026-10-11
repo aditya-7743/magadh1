@@ -55,6 +55,9 @@ LMS.Settings = ({ onLogout }) => {
 
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false), [backupError, setBackupError] = useState(''), [backupFile, setBackupFile] = useState(null);
+  const backupUrl = useRef(null);
+  useEffect(() => () => { if (backupUrl.current) URL.revokeObjectURL(backupUrl.current); }, []);
   const { Button, Card, Modal, Input, Icons } = LMS;
 
   const qrStyle = { width: '60px', height: '60px', objectFit: 'contain' };
@@ -108,10 +111,31 @@ LMS.Settings = ({ onLogout }) => {
   };
 
   // Backup Functions
-  const exportBackup = () => {
-    LMS.DB.exportBackup({ students, payments, halls, shifts, settings, activityLog });
-    addLog('Manual backup exported');
-    showToast('Backup exported!', 'success');
+  const exportBackup = async () => {
+    if (backupBusy) return;
+    setBackupBusy(true); setBackupError(''); setBackupFile(null);
+    if (backupUrl.current) { URL.revokeObjectURL(backupUrl.current); backupUrl.current = null; }
+    const scope = LMS.DB.scope;
+    try {
+      if (LMS.DB.sqlMode) {
+        if (!LMS.AccountAccess.session()) await LMS.AccountAccess.login();
+        if (scope !== LMS.DB.scope) throw new Error('Library account changed. Start the backup again.');
+        const data = await LMS.DB.completeSqlBackup();
+        if (scope !== LMS.DB.scope) throw new Error('Library account changed. Start the backup again.');
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+        const name = 'library_sql_backup_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+        backupUrl.current = url; setBackupFile({ url, name });
+        // Keep a visible download link: mobile browsers may block an automatic
+        // download after a long SQL request loses the original click activation.
+        const link = document.createElement('a'); link.href = url; link.download = name;
+        document.body.appendChild(link); link.click(); link.remove();
+        showToast('SQL backup ready. If download did not start, use Download backup below.', 'success');
+      } else {
+        await LMS.DB.exportBackup({ students, payments, halls, shifts, settings, activityLog });
+        showToast('Backup download requested.', 'success');
+      }
+    } catch (error) { setBackupError(error.message); showToast('Backup could not be prepared. See the message below.', 'error'); }
+    finally { setBackupBusy(false); }
   };
 
   const importBackup = (e) => {
@@ -363,7 +387,7 @@ LMS.Settings = ({ onLogout }) => {
     <${Card}>
       <h3 class="font-semibold mb-4 text-pink-600">Data Management</h3>
       <div class="flex gap-3 flex-wrap mb-4">
-        <${Button} onClick=${exportBackup} style=${backupBtnStyle}><${Icons.Download} /> Backup Now</${Button}>
+        <${Button} onClick=${exportBackup} disabled=${backupBusy} style=${backupBtnStyle}><${Icons.Download} /> ${backupBusy ? 'Preparing SQL backup…' : 'Backup Now'}</${Button}>
         <label class="cursor-pointer">
           <span class="btn inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white" style=${importBtnStyle}><${Icons.Upload} /> ${importing ? 'Importing…' : 'Import Backup'}</span>
           <input type="file" accept=".json" disabled=${importing} onChange=${importBackup} class="hidden" />
@@ -372,6 +396,9 @@ LMS.Settings = ({ onLogout }) => {
         <${Button} onClick=${fixDuplicates} className="bg-red-500 hover:bg-red-600 text-white"><${Icons.Trash} /> Repair Duplicates</${Button}>
       </div>
       
+      <p class="text-sm">SQL backup downloads as a complete JSON file, including photos and payment history. Personal Accounts verification and completed sync are required.</p>
+      ${backupError && html`<p role="alert" class="cash-error">${backupError} No complete backup was downloaded. Your pending changes remain on this device.</p>`}
+      ${backupFile && html`<div class="cash-notice" role="status"><p>Backup ready: ${backupFile.name}</p><a class="btn btn-primary" href=${backupFile.url} download=${backupFile.name}>Download backup</a><p class="text-sm">If the automatic download was blocked, tap this link. Check your Downloads folder after saving.</p></div>`}
       <div class="mt-4 pt-4 border-t">
         <h4 class="font-semibold text-purple-600 mb-2">Set Backup Directory</h4>
         <div class="flex items-center gap-3">
