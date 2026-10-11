@@ -1,6 +1,35 @@
 // ==================== SETTINGS.JS - Settings Page ====================
 window.LMS = window.LMS || {};
 
+LMS.CashPeriodSettings = () => {
+  const book = LMS.useCashBook();
+  const { showToast } = useContext(LMS.AppContext);
+  const current = book.data?.balances?.startDate ?? null;
+  const [date, setDate] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  useEffect(() => setDate(current || ''), [current]);
+  const save = async () => {
+    if (date && (!LMS.validDate(date) || date > LMS.today() || date < '2000-01-01')) { setError('Choose a valid start date up to today.'); return; }
+    const scope = LMS.DB.scope;
+    setBusy(true); setError('');
+    try {
+      // The protected API verifies a fresh Google proof on every change.
+      await LMS.AccountAccess.cashPeriod({ startDate: date || null, previousStartDate: current });
+      if (scope !== LMS.DB.scope) return;
+      window.dispatchEvent(new Event('lms-cash-updated'));
+      showToast('Counter & Purse start date saved.', 'success');
+    } catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  };
+  return html`<section class="card history-retention-settings"><h3>Counter & Purse · Start date</h3>
+    <p>Start a fresh cash calculation from this date, including that day. Earlier cash is excluded; old records are not deleted. Salary dues remain based on the full salary history.</p>
+    <p class="text-sm">Current: <strong>${book.data ? current ? LMS.formatDate(current) : 'All recorded history' : 'Loading…'}</strong></p>
+    <div class="history-retention-fields"><label>Calculate cash from<input class="input-field" type="date" min="2000-01-01" max=${LMS.today()} disabled=${busy || !book.data} value=${date} onChange=${event => setDate(event.target.value)} /></label></div>
+    <div class="flex flex-wrap gap-2"><button class="btn btn-secondary" disabled=${busy || !book.data} onClick=${() => setDate('')}>Use all history</button><button class="btn btn-primary" disabled=${busy || !book.data || (date || null) === current} onClick=${save}>${busy ? 'Verifying & saving…' : 'Verify personal email & save'}</button></div>
+    <small>Only adityakr.bihar@gmail.com or adityavaiosony@gmail.com can save this date. It applies to Counter & Purse on every device. If older money is still physically present, add it through a personal cash adjustment.</small>
+    ${(error || book.error) && html`<p role="alert">${error || book.error}</p>`}
+  </section>`;
+};
+
 LMS.HistoryRetentionSettings = () => {
   const { settings, setSettings, showToast } = useContext(LMS.AppContext);
   const current = LMS.historyRetention(settings);
@@ -212,6 +241,7 @@ LMS.Settings = ({ onLogout }) => {
   return html`<div class="space-y-6">
     <${LMS.AttendanceAlertSettings} key=${LMS.DB.scope} />
     <${LMS.HistoryRetentionSettings} key=${LMS.DB.scope} />
+    <${LMS.CashPeriodSettings} key=${LMS.DB.scope} />
     <${LMS.SqlMigrationPanel} />
     <${LMS.AccountsSecurity} />
     <${LMS.ScreenLockSettings} />

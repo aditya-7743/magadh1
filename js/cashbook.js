@@ -30,7 +30,7 @@ LMS.useCashBook = () => {
     try {
       const saved=await LMS.LoginStorage.read(retryKey);
       if(saved && !retry) throw new Error('An earlier request needs retry. Use “Retry saved entry” first.');
-      const command=retry?JSON.parse(saved||'null'):{...body,id:crypto.randomUUID()};
+      const command=retry?JSON.parse(saved||'null'):{...body,periodStartDate:state.data?.balances?.startDate ?? null,id:crypto.randomUUID()};
       if(!command) return false;
       await LMS.DB.flush();
       if(!await LMS.DB.syncLocalToCloud()) throw new Error('Finish pending library sync before recording cash. No cash entry was sent.');
@@ -58,7 +58,7 @@ LMS.CashBalances = ({balances}) => {
 LMS.CashDashboard = () => {
   const book=LMS.useCashBook();
   if(!book.data) return book.error?html`<div class="cash-notice">Counter & Purse: ${book.error}</div>`:null;
-  return html`<section class="cash-dashboard"><div class="cash-section-heading"><h3>Counter & Purse</h3><span>Recorded cash · amounts hidden by default</span></div><${LMS.CashBalances} balances=${book.data.balances}/></section>`;
+  return html`<section class="cash-dashboard"><div class="cash-section-heading"><h3>Counter & Purse</h3><span>${book.data.balances.startDate ? 'From ' + LMS.formatDate(book.data.balances.startDate) + ' · previous cash excluded' : 'All recorded history'} · amounts hidden by default</span></div><${LMS.CashBalances} balances=${book.data.balances}/></section>`;
 };
 
 LMS.CashWorkspace = ({initialAction='expense'}) => {
@@ -84,9 +84,10 @@ LMS.CashWorkspace = ({initialAction='expense'}) => {
   };
   return html`<div class="cash-workspace">
     <header class="cash-hero"><span class="cash-hero-icon"><${Icons.Payments}/></span><div><span class="cash-eyebrow">DAILY CASH DESK</span><h2>Every rupee, accounted for.</h2><p>Counter → Purse → Home. Transfers stay separate from expenses.</p></div><span class="cash-access-pill">${data.privateAccess?'Personal Accounts':'Library staff'}</span></header>
+    <p class="text-sm">${data.balances.startDate ? 'Cash calculation from ' + LMS.formatDate(data.balances.startDate) + ' · earlier cash excluded' : 'Cash calculation includes all recorded history'} · Start date is managed in Settings.</p>
     <${LMS.CashBalances} balances=${data.balances}/>
     ${(data.balances.counter<0||data.balances.purse<0)&&html`<p class="cash-warning">A recorded cash balance is negative. Check older expense sources and missing cash movements, then reconcile in personal Accounts before paying from that balance.</p>`}
-    <details class="cash-basis"><summary>How these balances are calculated</summary><p>All recorded cash receipts minus cash expenses, transfers and withdrawals. Online payments and discounts are not physical cash. ${data.balances.assumedCashExpenses} older expenses have no cash source and are counted against Counter. ${data.balances.unknownPaymentMethods} receipts have an unknown payment method and are excluded from cash.</p><p>Old transfers and cash already taken home cannot be inferred. Reconcile counted cash in private Accounts using an adjustment with a reason.</p></details>
+    <details class="cash-basis"><summary>How these balances are calculated</summary><p>Cash receipts minus cash expenses, transfers and withdrawals within the selected period. No earlier balance is carried forward. Online payments and discounts are not physical cash. ${data.balances.assumedCashExpenses} expenses in this period have no cash source and are counted against Counter. ${data.balances.unknownPaymentMethods} receipts have an unknown payment method and are excluded from cash.</p><p>Old transfers and cash already taken home cannot be inferred. Reconcile counted cash in private Accounts using an adjustment with a reason.</p></details>
     ${book.pending&&html`<div class="cash-notice" role="status">A saved request needs confirmation. Retry it safely; the same request will not be posted twice.<button class="btn btn-secondary" disabled=${book.busy} onClick=${async()=>{try{await book.submit(null,true);}catch(error){setCommandError(error.message);}}}>Retry saved entry</button></div>`}
     ${commandError&&html`<p class="cash-error" role="alert">${commandError}</p>`}
     <div class="cash-main-grid"><section class="cash-panel">

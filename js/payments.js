@@ -278,6 +278,8 @@ LMS.PaymentManagement = () => {
       <${Button} size="sm" onClick=${() => { setForm(p => ({ ...p, date: LMS.today(), time: LMS.currentTimeIST() })); setShowForm(true); }}><${Icons.Add} /> Add Payment</${Button}>
     </div>
 
+    <${LMS.CashDashboard}/>
+
     <div class="payments-toolbar">
       <div class="payments-search"><${SearchBar} value=${search} onChange=${e => setSearch(e.target.value)} placeholder="Search by student name or roll..." /></div>
 

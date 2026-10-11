@@ -73,6 +73,11 @@ window.LMS = window.LMS || {};
       try { return await LMS.SqlApi.request('accounts/profile', { method: 'POST', body, accountsIdentity }); }
       finally { await auth.signOut(); }
     },
+    async cashPeriod(body) {
+      const accountsIdentity = await this.proof();
+      try { return await LMS.SqlApi.request('accounts/cash-period', { method: 'POST', body, accountsIdentity }); }
+      finally { await auth.signOut(); }
+    },
     async list(kind) {
       const records = []; let after = null;
       do { const page = await LMS.SqlApi.request('accounts/' + kind, { query: { after } }); records.push(...page.items); after = page.next; } while (after);

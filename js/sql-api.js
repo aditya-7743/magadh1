@@ -27,6 +27,8 @@ LMS.SqlApi = {
       const messages = {
         INVALID_PAYMENT: 'A pending payment on this device has an invalid amount, discount or date. Use Review pending payment to correct it. Nothing has been discarded.',
         INVALID_RETENTION: 'History limits must be whole numbers between 1 and 3650 days.',
+        CASH_PERIOD_CHANGED: 'The start date changed on another device. Reload this setting before saving.',
+        CASH_BEFORE_START: 'Choose a date on or after the Counter & Purse start date shown in Settings.',
         CASH_SETUP_REQUIRED: 'Counter & Purse needs its database upgrade. Your existing data is unchanged.',
         CASH_INVALID_AMOUNT: 'Enter a positive amount with no more than two decimal places.',
         CASH_INVALID_DATE: 'Choose a valid date up to today.',
