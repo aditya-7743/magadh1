@@ -3,20 +3,44 @@ window.LMS = window.LMS || {};
 
 LMS.AppUpdateNotice = () => {
   const [update, setUpdate] = useState(null);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const registrationRef = useRef(null);
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     let registration, cancelled = false;
-    const inspect = () => { if (!cancelled && registration?.waiting) setUpdate(registration.waiting); };
+    const inspect = () => { if (!cancelled) setUpdate(registration?.waiting || null); };
     const found = () => registration?.installing?.addEventListener('statechange', inspect);
-    navigator.serviceWorker.ready.then(reg => { if (cancelled) return; registration = reg; inspect(); reg.addEventListener('updatefound', found); });
+    navigator.serviceWorker.ready.then(reg => { if (cancelled) return; registration = reg; registrationRef.current = reg; inspect(); reg.addEventListener('updatefound', found); found(); reg.update().catch(() => {}); });
     return () => { cancelled = true; registration?.removeEventListener('updatefound', found); };
   }, []);
   if (!update) return null;
-  return html`<div class="app-update-notice" role="status"><span>A new app update is ready.</span><button onClick=${() => {
+  return html`<div class="app-update-notice" role="status"><span>${error || 'A new app update is ready.'}</span><button disabled=${busy} onClick=${async () => {
     if (!confirm('Save any unfinished form before updating. Reload the app now?')) return;
-    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
-    update.postMessage({ type: 'ACTIVATE_UPDATE' });
-  }}>Update & reload</button></div>`;
+    setBusy(true); setError('');
+    try {
+      // SQL errors must not block a code update. Only local durability is required.
+      let saveTimer;
+      try { await Promise.race([LMS.DB.flush(), new Promise((_, reject) => { saveTimer = setTimeout(() => reject(new Error('Local saving is taking too long. Keep this tab open and retry; no pending data was removed.')), 15000); })]); }
+      finally { clearTimeout(saveTimer); }
+      if (LMS.DB.pending.length) throw new Error('Local changes are not saved yet. Keep this tab open and retry saving.');
+      const registration = await navigator.serviceWorker.getRegistration() || registrationRef.current;
+      const worker = registration?.waiting;
+      if (!worker) { window.location.reload(); return; }
+      let timer;
+      await new Promise((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); navigator.serviceWorker.removeEventListener('controllerchange', changed); worker.removeEventListener('statechange', state); };
+        const changed = () => { cleanup(); resolve(); };
+        const state = () => { if (worker.state === 'activated') changed(); };
+        navigator.serviceWorker.addEventListener('controllerchange', changed);
+        worker.addEventListener('statechange', state);
+        timer = setTimeout(() => { cleanup(); if (worker.state === 'activated' || registration.active === worker) resolve(); else reject(new Error('Update did not activate. Your pending records are safe. Refresh this page, then try again.')); }, 12000);
+        worker.postMessage({ type: 'ACTIVATE_UPDATE' });
+        worker.postMessage({ type: 'SKIP_WAITING' });
+        state();
+      });
+      window.location.reload();
+    } catch (problem) { setError(problem.message); setBusy(false); }
+  }}>${busy ? 'Updating…' : 'Update & reload'}</button></div>`;
 };
 
 // ==================== THEME TOGGLE COMPONENT ====================

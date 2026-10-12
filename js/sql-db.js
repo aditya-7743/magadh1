@@ -6,6 +6,12 @@
   let poll, pulling = false;
   db.sqlMode = true;
   db.sqlAuthorized = false;
+  const originalStatus = db.status.bind(db);
+  db.status = function() {
+    const status = originalStatus();
+    const issues = this.localLoad('offline_queue', []).filter(item => item.syncIssue).length;
+    return { ...status, issues, error: status.error || (issues ? `${issues} pending save(s) need review. Other independent updates continue syncing.` : '') };
+  };
   db.signInWithGoogle = async function() { const user = await originalSignIn(); if (user) await LMS.SqlApi.request('session'); return user; };
   db.recoverReceipts = async () => {}; // Archived receipts are preserved and combined by the billing engine.
   db.stage = function(key, value, cloud = true, options) {
@@ -125,16 +131,35 @@
       this.connected = true;
     } finally { pulling = false; this.notify('status'); }
   };
-  db.processOfflineQueue = async function() {
+  db.processOfflineQueue = async function({ retryIssues = false } = {}) {
     if (!this.userId || !navigator.onLine || this.processing || this.switching) return false;
     this.processing = true;
     const scope = this.scope;
+    let queueChanged = false;
     try {
+      return await LMS.SyncQueue.withLock(scope, async () => {
+      await this.writing;
+      if (scope !== this.scope) return false;
+      this.cache.offline_queue = (await LMS.Store.readScope(scope)).offline_queue || [];
+      if (retryIssues) this.cache.offline_queue = await LMS.Store.commit(scope, [], queue => queue.map(item => { const copy = { ...item }; delete copy.syncIssue; return copy; }));
       while (scope === this.scope) {
-        const operation = this.localLoad('offline_queue', [])[0];
+        const operation = LMS.SyncQueue.plan(this.localLoad('offline_queue', [])).find(item => item.ready)?.operation;
         if (!operation) break;
-        const result = await LMS.SqlApi.operation({ id: operation.id, changes: operation.changes, force: operation.force === true });
+        let result;
+        try {
+          result = await LMS.SqlApi.operation({ id: operation.id, changes: operation.changes, force: operation.force === true });
+        } catch (error) {
+          if (!LMS.SyncQueue.isRecordError(error)) throw error;
+          const syncIssue = { code: error.code, message: error.message, details: error.details || {}, at: new Date().toISOString() };
+          const remaining = await LMS.Store.commit(scope, [], queue => queue.map(item => item.id === operation.id ? { ...item, syncIssue } : item));
+          if (scope !== this.scope) return false;
+          this.cache.offline_queue = remaining;
+          queueChanged = true;
+          this.notify('status');
+          continue;
+        }
         const remaining = await LMS.Store.commit(scope, [], queue => queue.filter(item => item.id !== operation.id));
+        queueChanged = true;
         if (scope === this.scope) {
           this.cache.offline_queue = remaining;
           // Apply authoritative retention tombstones after removing this operation;
@@ -152,9 +177,11 @@
         }
       }
       this.paymentSyncIssue = null;
-      this.error = ''; this.connected = true; return true;
-    } catch (error) { this.paymentSyncIssue = error.code === 'INVALID_PAYMENT' ? error.details || {} : null; this.fail(error); return false; }
-    finally { this.processing = false; this.notify('status'); }
+      this.error = ''; this.connected = true;
+      return this.localLoad('offline_queue', []).length === 0;
+      });
+    } catch (error) { this.fail(error); return false; }
+    finally { this.processing = false; if (queueChanged) this.channel?.postMessage({ scope }); this.notify('status'); }
   };
   db.syncLocalToCloud = async function() {
     await this.flush();

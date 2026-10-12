@@ -272,6 +272,7 @@ LMS.SaveStatusPanel = () => {
   const status = LMS.useSyncStatus();
   const [review, setReview] = useState(false);
   if (!status.error) return null;
+  if (LMS.DB.sqlMode) return html`<div class="card p-4 m-4" role="alert" style=${{ border: '2px solid #ef4444' }}><p>${status.error}</p><button class="btn btn-secondary btn-sm" disabled=${LMS.DB.processing} onClick=${async () => { try { await LMS.DB.flush(); await LMS.DB.processOfflineQueue({ retryIssues: true }); } catch (error) { LMS.DB.fail(error); } }}>Retry save / sync</button><${LMS.SyncReview} /></div>`;
   const conflict = status.error.startsWith('Cloud changed');
   return html`<div class="card p-4 m-4" role="alert" style=${{ position: 'relative', zIndex: 100, border: '2px solid #ef4444' }}>
     <p>${status.error}</p>

@@ -25,7 +25,12 @@ LMS.SqlApi = {
     const result = await response.json();
     if (!response.ok) {
       const messages = {
-        INVALID_PAYMENT: 'A pending payment on this device has an invalid amount, discount or date. Use Review pending payment to correct it. Nothing has been discarded.',
+        INVALID_PAYMENT: 'This payment was rejected: check the amount, discount and stored date in Review & correct. Nothing has been discarded.',
+        INVALID_STUDENT: 'The student needs a name, a unique roll number and a positive monthly fee.',
+        STUDENT_NOT_FOUND: 'The student linked to this payment or attendance is missing from SQL. Review the student reference; other independent saves continue.',
+        INVALID_ATTENDANCE: 'The attendance date, student reference or status is invalid. Review this entry.',
+        PHOTO_CHANGED: 'A referenced photo is no longer available in SQL. Review this record before replacing its photo.',
+        OPERATION_TOO_LARGE: 'This save exceeds the server size limit. Its records are retained for review; other independent saves continue.',
         INVALID_RETENTION: 'History limits must be whole numbers between 1 and 3650 days.',
         CASH_PERIOD_CHANGED: 'The start date changed on another device. Reload this setting before saving.',
         CASH_BEFORE_START: 'Choose a date on or after the Counter & Purse start date shown in Settings.',

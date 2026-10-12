@@ -176,7 +176,8 @@
           if (cloud && before[id] && after[id] && before[id]._rev && after[id]._rev !== before[id]._rev) throw new Error('Record changed while the form was open. Reopen it before saving: ' + key + '/' + id);
           const activity = cloud && trackActivity && (key === 'students' || key === 'payments') ? { _activityAt: Date.now() } : {};
           const record = after[id] ? (cloud ? clone({ ...after[id], ...activity, _rev: LMS.generateId(), _updatedAt: Date.now() }) : after[id]) : { id, _deleted: true, ...activity, ...(key === 'payments' && before[id]?.studentId ? { studentId: before[id].studentId } : {}), _rev: LMS.generateId(), _updatedAt: Date.now() };
-          changes.push({ key, id, value: record, base: signature(before[id]), cloud });
+          changes.push({ key, id, value: record, base: signature(before[id]), cloud,
+            ...(LMS.SyncQueue ? { dependencies: [...LMS.SyncQueue.resources({ key, id, value: before[id] })] } : {}) });
           if (after[id]) after[id] = record;
         });
         value = Object.values(after);
