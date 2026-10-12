@@ -9,7 +9,7 @@ window.LMS = window.LMS || {};
   };
   const numberFields = new Set(['monthlyFee','amount','discount','months','seatCount']);
   const summarize = value => JSON.stringify(value, (key, item) => ['photo','formPhoto','qrCode'].includes(key) ? '[image retained]' : item, 2);
-  const privateOperation = operation => operation.changes.some(change => change.key === 'expenses' || change.key === 'activityLog' && change.value?.section === 'accounts');
+  const privateOperation = operation => operation.changes.some(change => change.key === 'expenses' || change.key === 'activityLog' && !LMS.isVisibleActivity(change.value));
   const label = change => {
     const student = LMS.DB.localLoad('students', []).find(item => item.id === (change.value?.studentId || (change.key === 'attendance' ? change.id?.split('/')[1] : change.id)));
     return `${change.key} · ${change.value?.name || change.value?.studentName || student?.name || change.id || 'Settings'}${change.value?.rollNo || student?.rollNo ? ' · Roll ' + (change.value?.rollNo || student.rollNo) : ''}`;
@@ -28,6 +28,7 @@ window.LMS = window.LMS || {};
         const disk = await LMS.Store.readScope(scope), queue = disk.offline_queue || [];
         const operation = queue.find(item => item.id === draft.operation.id);
         if (!operation?.syncIssue || JSON.stringify(operation) !== JSON.stringify(draft.operation)) throw new Error('This pending save changed in another tab. Reopen review.');
+        if (privateOperation(operation) && !LMS.AccountAccess?.session()) throw new Error('Verify your Accounts email before correcting this private entry.');
         const change = operation.changes[draft.index];
         if (change.value && typeof change.value === 'object' && (value?.id !== change.value.id || value?._rev !== change.value._rev || value?._deleted !== change.value._deleted)) throw new Error('Record identity, revision and deletion status cannot be changed here.');
         const updated = structuredClone(queue), operationIndex = queue.indexOf(operation), replacement = updated[operationIndex];
@@ -77,6 +78,7 @@ window.LMS = window.LMS || {};
   LMS.SyncReview = () => {
     LMS.useSyncStatus();
     const [draft, setDraft] = useState(null), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+    useEffect(() => { if (draft && draft.scope !== LMS.DB.scope) setDraft(null); }, [LMS.DB.scope, draft]);
     const plan = LMS.SyncQueue.plan(LMS.DB.localLoad('offline_queue', []));
     const begin = async (operation, index) => {
       setMessage('');
